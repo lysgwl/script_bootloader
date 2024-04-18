@@ -1,0 +1,105 @@
+#!/bin/sh
+
+# 获取当前脚本路径
+if [ -z "$2" ]; then
+	SCRIPT_CUR_PATH=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+else
+	SCRIPT_CUR_PATH="$2/bin"
+fi
+
+# 环境变量
+. ${SCRIPT_CUR_PATH}/options
+
+# 功能函数
+. ${SCRIPT_CUR_PATH}/feature
+
+# 初始化函数
+if [ $# == 0 ] || [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+	. ${SCRIPT_CUR_PATH}/init ${SCRIPT_BOOT_FLAG} "${SCRIPT_CUR_PATH}"
+elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+	. ${SCRIPT_CUR_PATH}/init ${SCRIPT_SHUTDOWN_FLAG} "${SCRIPT_CUR_PATH}"	
+fi
+
+# 初始化挂载脚本
+initMountScript()
+{
+	# 当前文件加锁
+	chmod 000 "$0"
+	
+	# 检测运行锁
+	if [ -e "${SCRIPT_RUN_LOCK}" ]; then
+		# 解锁文件
+		chmod 777 "$0"
+		return
+	fi
+	
+	logger -st "($(basename $0))" $$ "*--- ${SERVICE_FUNCTION} ${SERVICE_NAME} ON ${ROUTER_MODEL} ---*"
+	
+	# 检测路由器启动服务异常
+	if [ ${SERVICE_STARTUP_SUCCESS} -ne 1]; then
+		# 解锁文件
+		chmod 777 "$0"
+		
+		logger -st "($(basename $0))" $$ "notice: ${ROUTER_MODEL} is not ready!"
+		return
+	fi 
+	
+	# 启动swap交换分区
+	. ${BASIC_ADDONS_PATH}/swap/bin/swap_configure ${SCRIPT_BOOT_FLAG}
+
+	# 启动entware环境
+	. ${BASIC_ADDONS_PATH}/entware/bin/entware_configure ${SCRIPT_BOOT_FLAG}
+
+	# 更新系统时区
+	. ${BASIC_ADDONS_PATH}/timezone/bin/timezone_configure ${SCRIPT_BOOT_FLAG}
+
+	# 启动依赖环境
+	. ${BASIC_ADDONS_PATH}/dependency/bin/dependency_configure ${SCRIPT_BOOT_FLAG}
+	
+	# 开启运行锁
+	touch "${SCRIPT_RUN_LOCK}"
+	
+	# 解锁文件
+	chmod 777 "${0}"
+	
+	logger -st "($(basename $0))" $$ "SUCCESS: ${SERVICE_FUNCTION} ${SERVICE_NAME}"
+}
+
+# 释放挂载脚本
+uninitMountScript()
+{
+	logger -st "($(basename $0))" $$ "*--- ${SERVICE_FUNCTION} ${SERVICE_NAME} ON ${ROUTER_MODEL} ---*"
+
+	# 清除monit服务列表
+	clearMonitSrvList
+	
+	# 关闭依赖环境
+	. ${BASIC_ADDONS_PATH}/dependency/bin/dependency_configure ${SCRIPT_SHUTDOWN_FLAG}
+
+	# 关闭系统时区
+	. ${BASIC_ADDONS_PATH}/timezone/bin/timezone_configure ${SCRIPT_SHUTDOWN_FLAG}
+
+	# 关闭entware环境
+	. ${BASIC_ADDONS_PATH}/entware/bin/entware_configure ${SCRIPT_SHUTDOWN_FLAG}
+
+	# 关闭swap交换分区
+	. ${BASIC_ADDONS_PATH}/swap/bin/swap_configure ${SCRIPT_SHUTDOWN_FLAG}
+	
+	# 删除运行锁
+	rm -f "${SCRIPT_RUN_LOCK}"
+	
+	logger -st "($(basename $0))" $$ "SUCCESS: ${SERVICE_FUNCTION} ${SERVICE_NAME}"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放挂载脚本
+		uninitMountScript
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化挂载脚本
+		initMountScript
+		;;
+	*)
+		;;
+esac

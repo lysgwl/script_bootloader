@@ -1,0 +1,40 @@
+#!/bin/sh
+
+openOpensshService()
+{
+	echo -e "($(basename $0)): $$ *--------- Enable Openssh Service! ---------*"
+	
+	if [ ! -e "/opt/etc/ssh/sshd_config" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: Enable openssh service!"
+		exit 1
+	fi
+	
+	if [ -z `sed -n '/sshd:x:22:22:sshd:\/var\/run\/sshd:\/opt\/bin\/false/p' "/etc/passwd"` ]; then
+		echo -e "sshd:x:22:22:sshd:/var/run/sshd:/opt/bin/false" >> "/etc/passwd"
+	fi
+	
+	SBL_USERNAME="$(nvram get sbl_username)"
+	sed -E -i 's/^('"${SBL_USERNAME}"'):(.*):([[:digit:]]*):([[:digit:]]*):([[:digit:]]*):([[:digit:]]*):([[:digit:]]*):([[:digit:]]*):/\1:\2::\4:\5:\6:\7::/' "/etc/shadow"
+	
+	/opt/sbin/sshd
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: Enable openssh service!"
+}
+
+closeOpensshService()
+{
+	echo -e "($(basename $0)): $$ *--------- Disable Openssh Service! ---------*"
+	
+	killall -q  "sshd"
+	sed -i '/^sshd:.*$/d' "/etc/passwd"
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: Disable openssh service!"
+}
+
+case ${1} in
+	0)
+		closeOpensshService
+		;;
+	1)
+		openOpensshService
+		;;
+esac

@@ -1,0 +1,299 @@
+#!/bin/sh
+
+: "
+	install filebrowser
+"
+
+# filebrowser服务
+SERVICE_MODULE_NAME="filebrowser"
+
+# filebrowser脚本根目录
+FILEBROWSER_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/filebrowser"
+
+# filebrowser脚本usr目录
+FILEBROWSER_PRIVATE_USR="${FILEBROWSER_PRIVATE_ROOT}/usr"
+
+# filebrowser安装路径
+FILEBROWSER_SYSTEM_PATH="${ROUTER_USR_PATH}/filebrowser"
+
+# filebrowser脚本运行路径
+FILEBROWSER_RUN_PATH="${ENTWARE_RUN_PATH}/filebrowser"
+
+# filebrowser的pid文件
+FILEBROWSER_PID_FILE="/var/run/${SERVICE_MODULE_NAME}.pid"
+
+# filebrowser地址
+FILEBROWSER_URL="https://api.github.com/repos/filebrowser/filebrowser/releases/latest"
+
+# 下载安装包
+downloadPackages()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: downloading the ${SERVICE_MODULE_NAME} file!"
+
+	if [ -z "$(which curl)" ]; then
+		return
+	fi
+
+	# 华硕路由器系统
+	if [ -z "${OPERATING_SYSTEM}" ]; then
+		RouterSystem="$(uname | sed -E 's/[[:upper:]]/\1&/g')"
+	else
+		RouterSystem=${OPERATING_SYSTEM}
+	fi
+
+	# 华硕路由器架构
+	if [ "${ROUTER_ARCHITECTURE}" == "arm64" ]; then
+		RouterArch="arm64"
+	elif [ "${ROUTER_ARCHITECTURE}" == "arm" ]; then
+		RouterArch="armv7"
+	elif [ "${ROUTER_ARCHITECTURE}" == "mipsle" ]; then
+		RouterArch="mipsle"
+	else
+		RouterArch="armv5"
+	fi
+
+	lastVersion="$(curl -s "${FILEBROWSER_URL}" | sed -E -n -e 's/^[[:space:]]*\"tag_name\":[[:space:]]*\"(.*)\".*/\1/p')"
+	if [ -z "${lastVersion}" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: get ${SERVICE_MODULE_NAME} version number failed!"
+		return
+	fi
+
+	# 文件名称
+	filebrowser_file="${RouterSystem}-${RouterArch}-filebrowser.tar.gz"
+
+	# 下载链接
+	#https://github.com/filebrowser/filebrowser/releases/download/v2.23.0/linux-armv7-filebrowser.tar.gz
+	filebrowser_link="https://github.com/filebrowser/filebrowser/releases/download/${lastVersion}/${filebrowser_file}"
+
+	# 判断文件存在
+	if [ -e "${FILEBROWSER_PRIVATE_USR}/${filebrowser_file}" ]; then
+		rm -rf "${FILEBROWSER_PRIVATE_USR}/${filebrowser_file}"
+	fi
+}
+
+# 安装filebrowser环境
+installFileBrowserEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+		
+	if [ ! -d "${FILEBROWSER_SYSTEM_PATH}" ]; then
+		mkdir "${FILEBROWSER_SYSTEM_PATH}"
+	fi
+
+	if [ ! -d "${FILEBROWSER_PRIVATE_USR}" ]; then
+		mkdir "${FILEBROWSER_PRIVATE_USR}"
+	fi
+
+	# 检索文件列表
+	fileList=$(find "$FILEBROWSER_PRIVATE_USR" -name "*filebrowser*.tar.gz" | sort -s | tail -n 1)
+
+	# 获取文件压缩包
+	if [ -n "${fileList}" ]; then
+		filePath="${fileList}"
+	else
+		downloadPackages $filePath
+	fi
+
+	if [ -d "${FILEBROWSER_SYSTEM_PATH}/bin" ]; then
+		rm -rf "${FILEBROWSER_SYSTEM_PATH}/bin"
+	fi
+
+	mkdir "${FILEBROWSER_SYSTEM_PATH}/bin"
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: extracting ${SERVICE_MODULE_NAME} file!"
+
+	# 解压安装包
+	tar -xzvf "${filePath}" -C "${FILEBROWSER_SYSTEM_PATH}/bin"
+}
+
+# 卸载filebrowser环境
+unInstallFileBrowserEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ -d "${FILEBROWSER_SYSTEM_PATH}" ]; then
+		rm -rf "${FILEBROWSER_SYSTEM_PATH}"
+	fi
+
+	if [ -d "${FILEBROWSER_RUN_PATH}" ]; then
+		rm -rf "${FILEBROWSER_RUN_PATH}"
+	fi
+}
+
+# 设置filebrowser配置
+setFileBrowserCfg()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} config!"
+
+	# 配置filebrowser
+	if [ -e "${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" ]; then
+	
+		username="$(nvram get sbl_username)"
+		userpasswd="$(nvram get sbl_password)"
+	
+		# 创建配置数据库
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config init
+		
+		# 设置监听地址
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config set --address "0.0.0.0"
+		
+		# 设置监听端口
+		HTTPPORT=${FILEBROWSER_HTTP_PORT}
+		if [ -z ${HTTPPORT} ]; then
+			HTTPPORT="8088"
+		fi
+		
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config set --port ${HTTPPORT}
+		
+		# 设置语言环境
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config set --locale "zh-cn"
+		
+		# 设置日志位置
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config set --log "/var/log/${SERVICE_MODULE_NAME}"
+		
+		# 设置行为配置
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config set --branding.disableExternal --sorting.by "name" --viewMode "list"
+		
+		# 设置根目录
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" config set --scope /
+		
+		# 添加用户
+		"${FILEBROWSER_SYSTEM_PATH}/bin/filebrowser" -d "${FILEBROWSER_SYSTEM_PATH}/etc/database.db" users add "${username}" "${userpasswd}" --perm.admin
+		
+		# bin目录链接
+		if [ ! -e "${FILEBROWSER_RUN_PATH}/bin" ]; then
+			ln -s "${FILEBROWSER_SYSTEM_PATH}/bin" "${FILEBROWSER_RUN_PATH}/bin"
+		fi
+		
+		# etc目录链接
+		if [ ! -e "${FILEBROWSER_RUN_PATH}/etc" ]; then
+			ln -s "${FILEBROWSER_SYSTEM_PATH}/etc" "${FILEBROWSER_RUN_PATH}/etc"
+		fi	
+	fi
+}
+
+# 设置filebrowser监控
+setFileBrowserMonit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${FILEBROWSER_PRIVATE_ROOT}/etc/filebrowser" ]; then
+			cp -f "${FILEBROWSER_PRIVATE_ROOT}/etc/filebrowser" "${ENTWARE_MONITD_PATH}/filebrowser.on"		
+			chmod 600 "${ENTWARE_MONITD_PATH}/filebrowser.on"
+		fi
+
+		if [ -e "${FILEBROWSER_PRIVATE_ROOT}/bin/filebrowser_control" ]; then
+			cp -f "${FILEBROWSER_PRIVATE_ROOT}/bin/filebrowser_control" "${FILEBROWSER_RUN_PATH}"
+			chmod 775 "${FILEBROWSER_RUN_PATH}/filebrowser_control"
+		fi
+
+		# 启动FILEBROWSER服务
+		waitForMonitSrvProcess 1 "FILEBROWSER"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭FILEBROWSER服务
+		waitForMonitSrvProcess 0 "FILEBROWSER"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		# 等待filebrowser进程退出
+		if [ -e "$FILEBROWSER_PID_FILE" ]; then
+			for PID in $(cat "$FILEBROWSER_PID_FILE"); do
+				kill $PID
+			done
+		fi
+
+		if [ -e "${ENTWARE_MONITD_PATH}/filebrowser.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/filebrowser.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "FILEBROWSER"
+	fi
+}
+
+# 设置filebrowser环境
+setFileBrowserEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置filebrowser监控
+		setFileBrowserMonit $1
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${FILEBROWSER_RUN_PATH}" ]; then
+			mkdir "${FILEBROWSER_RUN_PATH}"
+		fi
+		
+		if [ ! -d "${FILEBROWSER_SYSTEM_PATH}/etc" ]; then
+			mkdir "${FILEBROWSER_SYSTEM_PATH}/etc"
+		fi
+
+		# 设置filebrowser配置
+		setFileBrowserCfg
+
+		# 设置filebrowser监控
+		setFileBrowserMonit $1
+	fi
+}
+
+# 初始化filebrowser环境
+initFileBrowserEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	if [ -n "$(pidof filebrowser)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} service is running!"
+		return
+	fi
+
+	# 安装filebrowser环境
+	installFileBrowserEnv
+	
+	# 设置filebrowser环境
+	setFileBrowserEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"	
+}
+
+# 释放filebrowser环境
+uninitFileBrowserEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then	#-a : and
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	
+	# 设置filebrowser环境
+	setFileBrowserEnv $1
+	
+	# 卸载filebrowser环境
+	unInstallFileBrowserEnv
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放filebrowser环境
+		uninitFileBrowserEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化filebrowser环境
+		initFileBrowserEnv $1
+		;;
+	*)
+		;;
+esac

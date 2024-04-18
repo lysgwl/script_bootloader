@@ -1,0 +1,135 @@
+#!/bin/sh
+
+# 脚本目录名称
+SCRIPT_DIRNAME="script_bootloader"
+
+# 查找脚本路径
+findScriptPath()
+{
+	part=$1
+	
+	listScript=$(find "$part" -name "$SCRIPT_DIRNAME")
+	if [ -z "$listScript" ]; then
+		return
+	fi
+
+	while [ 1 ]; do
+		path=`echo "$listScript" | sed -n '1p'`
+		if [ -z "$path" ]; then
+			break
+		fi
+		
+		if [ -x "$path" ] && [ -x "${path}/bin/usb_mount_script" ]; then
+			usbMountPoint=$(echo "$path" | sed "s/\/script_bootloader.*//")
+			
+			if [ ! -z "$usbMountPoint" ] && [ -d "${usbMountPoint}/usr" ]; then
+				# 脚本返回路径
+				filePath="${path}/bin/usb_mount_script"
+				
+				echo "$path $filePath"
+				break
+			fi
+		fi
+		
+		listScript=$(echo "$listScript" | sed '1d' | sed '/^$/d')
+	done
+}
+
+# 查找Usb分区
+findUsbPart()
+{
+	disk=$1
+	listPart=$2
+	
+	while [ 1 ]; do
+		top=`echo "$listPart" | sed -n '1p'`
+		if [ -z "$top" ]; then
+			break
+		fi
+		
+		# 解析挂载路径
+		part=$(echo "$top" | awk '{
+			if ($1=="'$disk'" && $6~/mnt/){
+				print $6; exit
+			}
+		}')
+		
+		if [ ! -z "$part" ]; then
+			path=`findScriptPath "$part"`
+			
+			if [ ! -z "$path" ]; then
+				echo "$path"
+				break
+			fi
+		fi
+		
+		listPart=$(echo "$listPart" | sed '1d' | sed '/^$/d')
+	done
+}
+
+# 查找Usb设备
+findUsbDev()
+{
+	listDisk=$1
+	while [ 1 ]; do
+		top=`echo "$listDisk" | sed -n '1p'`
+		if [ -z "$top" ]; then
+			break
+		fi
+		
+		listPart=$2
+		disk=$(echo "$top" | awk '{print $1}')
+		
+		if [ ! -z "$disk" ]; then
+			path=`findUsbPart "$disk" "$listPart"`
+			
+			if [ ! -z "$path" ]; then
+				echo "$path"
+				break
+			fi
+		fi	
+		
+		listDisk=$(echo "$listDisk" | sed '1d' | sed '/^$/d')
+	done
+}
+
+# 获取Usb脚本路径
+getUsbScriptPath()
+{
+	devName=$(cat /proc/partitions | awk '{print $4}' | grep -E "(^|[ ])sd[a-z]+($|[ ])")
+	if [ -z "$devName" ]; then
+		return
+	fi
+	
+	listDisk=$(fdisk -l | grep "^/dev/${devName}" | sort -s)
+	listPart=$(df -h | grep "^/dev/${devName}" | sort -s)
+	
+	if [ -z "$listDisk" ] || [ -z "$listPart" ]; then
+		return
+	fi
+	
+	filePath=`findUsbDev "$listDisk" "$listPart"`
+	if [ -z "$filePath" ]; then
+		return
+	fi
+	
+	echo "$filePath"
+}
+
+SetUsbMountScript()
+{
+	# 获取Usb脚本路径
+	listPath=`getUsbScriptPath`
+	
+	if [ -z "$listPath" ]; then
+		return
+	fi
+	
+	eval $(echo "$listPath" | awk '{printf("path=%s\nfilepath=%s",$1,$2)}')
+	
+	exec ${filepath} $1 $path 
+}
+
+if [ $# == 1 ]; then
+	SetUsbMountScript $1
+fi

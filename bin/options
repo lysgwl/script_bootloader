@@ -1,0 +1,136 @@
+#!/bin/sh
+
+# 路由器型号
+ROUTER_MODEL="$(nvram get model)"
+
+# 脚本运行标识
+SCRIPT_RUN_FLAG=0
+
+# 脚本卸载标识
+SCRIPT_UNINIT_FLAG=0
+
+# 脚本安装标识
+SCRIPT_INIT_FLAG=1
+
+# 脚本启动标识
+SCRIPT_BOOT_FLAG=2
+
+# 脚本关闭标识
+SCRIPT_SHUTDOWN_FLAG=3
+
+# 脚本目录名称
+SCRIPT_DIRNAME="script_bootloader"
+
+# 路由器系统
+OPERATING_SYSTEM="$(uname | tr '[A-Z]' '[a-z]')"
+
+# 系统架构
+SYSTEM_ARCH="$(uname -m)"
+
+# 服务名称
+SERVICE_NAME="Scripts-BootLoader-For-ASUS-Router"
+
+# 服务启动标识
+SERVICE_STARTUP_SUCCESS=0
+
+# 服务开启标识
+SERVICE_OPEN_FLAG=2
+
+# 服务关闭标识
+SERVICE_CLOSE_FLAG=3
+
+# monit的web端口
+MONIT_HTTP_PORT="8010"
+
+# filebrowser的web端口
+FILEBROWSER_HTTP_PORT="8012"
+
+# alist的web端口
+ALIST_HTTP_PORT="8015"
+
+# AriaNg的web端口
+ARIANG_HTTP_PORT="8017"
+
+# shellinabox的web端口
+SHELLINABOX_HTTP_PORT="8020"
+
+# openssh_server的ssd端口号
+OPENSSH_SERVER_PORT="8022"
+
+# 路由器架构
+ROUTER_ARCHITECTURE=""
+
+# 路由器JFFS路径
+ROUTER_JFFS_PATH="/jffs"
+
+# USB挂载路径
+USB_MOUNT_PATH=""
+
+# U盘脚本目录挂载点
+USB_MOUNT_POINT=""
+
+# USB挂载脚本
+USB_MOUNT_SCRIPT=""
+
+# USB卸载脚本
+USB_UNMOUNT_SCRIPT=""
+
+# 脚本运行锁
+SCRIPT_RUN_LOCK=""
+
+# 脚本路径
+SCRIPT_SYS_PATH=""
+
+# 脚本bin路径
+SCRIPT_BIN_PATH=""
+
+# 脚本tmp路径
+SCRIPT_TMP_PATH=""
+
+# 脚本etc路径
+SCRIPT_ETC_PATH=""
+
+# 脚本usr路径
+SCRIPT_USR_PATH=""
+
+# 脚本var路径
+SCRIPT_VAR_PATH=""
+
+# basicAddons插件
+BASIC_ADDONS_PATH=""
+
+# expandAddons插件
+EXPAND_ADDONS_PATH=""
+
+# 路由器usr路径
+ROUTER_USR_PATH=""
+
+# entware版本
+ENTWARE_VERSION=""
+
+# entware名称
+ENTWARE_NAME=""
+
+# entware网站路径
+ENTWARE_HOST="http://bin.entware.net"
+
+# entware安装路径
+ENTWARE_SYSTEM_PATH=""
+
+# entware运行路径
+ENTWARE_RUN_PATH=""
+
+# monit配置目录路径
+ENTWARE_MONITD_PATH=""
+
+# profile.d配置目录路径
+ENTWARE_PROFILED_PATH=""
+
+# web站点路径
+USR_WEBSITE_PATH=""
+
+# 
+WAN_GW_IFNAME="$(nvram get wan0_gw_ifname)"
+
+#
+WAN_REALIP_ADDR="$(nvram get wan0_realip_ip)"

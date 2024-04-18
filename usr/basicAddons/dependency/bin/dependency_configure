@@ -1,0 +1,251 @@
+#!/bin/sh
+
+: "	
+	dependency环境配置
+"
+
+# dependency服务
+SERVICE_MODULE_NAME="dependency"
+
+# dependency脚本根目录
+DEPENDENCY_PRIVATE_ROOT="${BASIC_ADDONS_PATH}/dependency"
+
+# dependency脚本usr目录
+DEPENDENCY_PRIVATE_USR="${DEPENDENCY_PRIVATE_ROOT}/usr"
+
+# dependency安装路径
+DEPENDENCY_SYSTEM_PATH="${ROUTER_USR_PATH}/dependency"
+
+# profile环境变量文件
+ENTWARE_PROFILE_FILE="/opt/etc/profile"
+
+# bash环境配置文件
+EMTWARE_BASHRC_FILE="/opt/etc/bashrc"
+
+# gcc依赖环境设置
+DEPENDENCY_GCCENV_FILE="/opt/bin/gcc_env.sh"
+
+# ependency依赖包的列表
+DEPENDENCY_LIST_FILE="${DEPENDENCY_PRIVATE_ROOT}/etc/list_packages"
+
+# 设置依赖包
+setDependencyPackages()
+{
+	echo "dependency" >/dev/null 2>&1
+	
+	# coreutils
+	installPackagesFromConf $1 "coreutils" ${DEPENDENCY_LIST_FILE}
+	
+	# boost
+	#installPackagesFromConf $1 "boost" ${DEPENDENCY_LIST_FILE}
+	
+	# perl
+	#installPackagesFromConf $1 "perl" ${DEPENDENCY_LIST_FILE}
+	
+	# perlbase
+	#installPackagesFromConf $1 "perlbase" ${DEPENDENCY_LIST_FILE}
+	
+	# python
+	#installPackagesFromConf $1 "python" ${DEPENDENCY_LIST_FILE}
+	
+	# tools
+	installPackagesFromConf $1 "tools" ${DEPENDENCY_LIST_FILE}
+}
+
+# 安装依赖环境
+installDependencyEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 设置依赖包
+	setDependencyPackages $1
+}
+
+# 卸载依赖环境
+unInstallDependencyEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 设置依赖包
+	setDependencyPackages $1
+	
+	if [ -d "${DEPENDENCY_SYSTEM_PATH}" ]; then
+		rm -rf "${DEPENDENCY_SYSTEM_PATH}"
+	fi
+	
+	if [ -d "${DEPENDENCY_PRIVATE_ROOT}/var" ]; then
+		rm -rf "${DEPENDENCY_PRIVATE_ROOT}/var"
+	fi
+	
+	if [ -d "${ENTWARE_RUN_PATH}" ]; then
+		rm -rf "${ENTWARE_RUN_PATH}"
+	fi
+}
+
+# 设置依赖配置
+setDependencyConf()
+{
+	# profile文件备份
+	if [ -e "${DEPENDENCY_SYSTEM_PATH}/profile.bak" ]; then
+		rm -rf "${DEPENDENCY_SYSTEM_PATH}/profile.bak"
+	fi
+	
+	if [ -e "${ENTWARE_PROFILE_FILE}" ]; then
+		cp -f "${ENTWARE_PROFILE_FILE}" "${DEPENDENCY_SYSTEM_PATH}/profile.bak"
+	fi
+	
+	if [ -z "`sed -n '/\/opt\/etc\/profile.d\//p' ${ENTWARE_PROFILE_FILE}`" ]; then
+		# profile文件写入profile.d配置
+		cat >> "${ENTWARE_PROFILE_FILE}" <<-EOF
+		
+			# Load custom changes to the environment in /opt/etc/profile.d
+			for PROFILED in /opt/etc/profile.d/*.sh
+			do
+			    if [ -r "\${PROFILED}" ]; then
+			        source "\${PROFILED}"
+			    fi
+			done
+			
+		EOF
+	fi
+	
+	# 创建bashrc文件配置
+	cat > "${EMTWARE_BASHRC_FILE}" <<-EOF
+	
+		# User specific aliases and functions
+		alias ls='ls --color=auto'
+		
+	EOF
+	
+	if [ -z "`grep -ril "$EMTWARE_BASHRC_FILE" ${ENTWARE_PROFILE_FILE}`" ]; then
+		cat >> "${ENTWARE_PROFILE_FILE}" <<-EOF
+		
+			# Get the aliases and functions
+			if [ -r "${EMTWARE_BASHRC_FILE}" ]; then
+			    source "${EMTWARE_BASHRC_FILE}"
+			fi
+			
+		EOF
+	fi
+}
+
+# 设置依赖环境
+setDependencyEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_INIT_FLAG} ] || [ $1 == ${SERVICE_OPEN_FLAG} ]; then
+		if [ ! -d "${DEPENDENCY_SYSTEM_PATH}" ]; then
+			mkdir "${DEPENDENCY_SYSTEM_PATH}"
+		fi
+		
+		if [ ! -d "${DEPENDENCY_PRIVATE_ROOT}/var" ]; then
+			mkdir "${DEPENDENCY_PRIVATE_ROOT}/var"
+		fi
+		
+		# entware运行目录
+		if [ ! -d "${ENTWARE_RUN_PATH}" ]; then
+			mkdir "${ENTWARE_RUN_PATH}"
+		fi
+		
+		# 创建profile.d配置目录
+		if [ ! -d "${ENTWARE_PROFILED_PATH}" ]; then
+			mkdir "${ENTWARE_PROFILED_PATH}"
+		fi
+		
+		# 创建web站点路径
+		if [ ! -d "${USR_WEBSITE_PATH}" ]; then
+			mkdir "${USR_WEBSITE_PATH}"
+		fi
+		
+		# 设置依赖配置
+		setDependencyConf
+	else
+		if [ -d "${ENTWARE_PROFILED_PATH}" ]; then
+			rm -rf "${ENTWARE_PROFILED_PATH}"
+		fi
+		
+		if [ -d "${USR_WEBSITE_PATH}" ]; then
+			rm -rf "${USR_WEBSITE_PATH}"
+		fi
+	fi
+}
+
+# 开启依赖服务
+openDependencyService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: enable the ${SERVICE_MODULE_NAME} service!"
+	
+	if [ -e "${DEPENDENCY_GCCENV_FILE}" ]; then
+		if [ -z "`sed -n '/^source \/opt\/bin\/gcc_env.sh/p' "/opt/etc/profile"`" ]; then
+			echo "source \"${DEPENDENCY_GCCENV_FILE}\"" >> "/opt/etc/profile"
+		fi
+	fi
+}
+
+# 关闭依赖服务
+closeDependencyService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the ${SERVICE_MODULE_NAME} service!"
+	
+	if [ -e "/opt/etc/profile" ]; then
+		if [ -z "`sed -n '/^source \/opt\/bin\/gcc_env.sh/p' "/opt/etc/profile"`" ]; then
+			sed -i '\#^source \"/opt/bin/gcc_env\.sh\"#d' "/opt/etc/profile"
+		fi
+	fi
+}
+
+# 初始化依赖环境
+initDependencyEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 安装依赖环境
+	installDependencyEnv $1
+	
+	# 设置依赖环境
+	setDependencyEnv $1
+
+	# 开启依赖服务
+	openDependencyService $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放依赖环境
+uninitDependencyEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 关闭依赖服务
+	closeDependencyService $1
+	
+	# 设置依赖环境
+	setDependencyEnv $1
+
+	# 卸载依赖环境
+	unInstallDependencyEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放依赖环境
+		uninitDependencyEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化依赖环境
+		initDependencyEnv $1
+		;;
+	${SERVICE_OPEN_FLAG})
+		# 开启依赖服务
+		openDependencyService $1
+		;;
+	${SERVICE_CLOSE_FLAG})	
+		# 关闭依赖服务
+		closeDependencyService $1
+		;;
+	*)
+		;;
+esac

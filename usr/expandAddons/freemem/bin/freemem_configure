@@ -1,0 +1,123 @@
+#!/bin/sh
+
+: "	
+	freemem环境配置
+"
+
+# freemem服务
+SERVICE_MODULE_NAME="freemem"
+
+# freemem脚本bin目录
+FREEMEM_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/freemem"
+
+# freemem安装路径
+FREEMEM_SYSTEM_PATH="${ROUTER_USR_PATH}/freemem"
+
+# freemem脚本运行路径
+FREEMEM_RUN_PATH="${ENTWARE_RUN_PATH}/freemem"
+
+# 设置freemem监控
+setFreememMonit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${FREEMEM_PRIVATE_ROOT}/etc/freemem" ]; then
+			cp -f "${FREEMEM_PRIVATE_ROOT}/etc/freemem" "${ENTWARE_MONITD_PATH}/freemem.on"		
+			chmod 600 "${ENTWARE_MONITD_PATH}/freemem.on"
+		fi
+
+		if [ -e "${FREEMEM_PRIVATE_ROOT}/bin/freemem_control" ]; then
+			cp -f "${FREEMEM_PRIVATE_ROOT}/bin/freemem_control" "${FREEMEM_RUN_PATH}"
+			chmod 775 "${FREEMEM_RUN_PATH}/freemem_control"
+		fi
+
+		# 启动FREEMEM服务
+		waitForMonitSrvProcess 1 "FREEMEM"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭FREEMEM服务
+		waitForMonitSrvProcess 0 "FREEMEM"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		if [ -e "${ENTWARE_MONITD_PATH}/freemem.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/freemem.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "FREEMEM"
+	fi
+}
+
+# 设置freemem环境
+setFreememEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+
+	if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置freemem监控
+		setFreememMonit $1
+
+		if [ -d "${FREEMEM_RUN_PATH}" ]; then
+			rm -rf "${FREEMEM_RUN_PATH}"
+		fi
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${FREEMEM_RUN_PATH}" ]; then
+			mkdir "${FREEMEM_RUN_PATH}"
+		fi
+
+		# 设置freemem监控
+		setFreememMonit $1
+	fi
+}
+
+# 初始化freemem环境
+initFreememEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	# 设置freemem环境
+	setFreememEnv $1
+
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放freemem环境
+uninitFreememEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	# 设置freemem环境
+	setFreememEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放alist环境
+		uninitFreememEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化alist环境
+		initFreememEnv $1
+		;;
+	*)
+		;;
+esac

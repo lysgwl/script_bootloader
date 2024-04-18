@@ -1,0 +1,68 @@
+#!/bin/sh
+
+: "
+	filebrowser control
+"
+
+# 获取当前脚本路径
+basePath=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+
+# 开启FileBrowser服务
+openFileBrowserService()
+{
+    echo -e "($(basename $0)): $$ *--------- enable filebrowser service! ---------*"
+	
+	if [ ! -e "${basePath}/bin/filebrowser" ] || [ ! -e "${basePath}/etc/database.db" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services fileBrowser not installed!"
+		return
+	fi
+	
+	if [ -n "$(pidof filebrowser)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: filebrowser service is running!"
+		return
+	fi
+	
+	# 后台运行FileBrowser
+	"${basePath}/bin/filebrowser" -d "${basePath}/etc/database.db" --disable-preview-resize --disable-exec --disable-type-detection-by-header &> /dev/null &
+	
+	# filebrowser id写入文件
+	echo "$(pidof filebrowser)" > "/var/run/filebrowser.pid"
+	
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable fileBrowser service!"
+}
+
+# 关闭FileBrowser服务
+closeFileBrowserService()
+{
+    echo -e "($(basename $0)): $$ *--------- disable fileBrowser service! ---------*"
+	
+	# 检测filebrowser进程文件
+	if [ -e "/var/run/filebrowser.pid" ]; then
+		echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the service process of fileBrowser!"
+		
+		# 关闭filebrowser进程
+		for PID in $(cat "/var/run/filebrowser.pid"); do
+			kill $PID
+		done
+		
+		rm -rf "/var/run/filebrowser.pid"
+	fi
+
+	# 关闭filebrowser进程
+	for PID in $(pidof filebrowser); do
+		kill $PID
+	done
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: disable fileBrowser service!"
+}
+
+case $1 in
+	0)
+        # 关闭FileBrowser服务
+		closeFileBrowserService
+		;;
+	1)
+        # 开启FileBrowser服务
+		openFileBrowserService
+		;;
+esac

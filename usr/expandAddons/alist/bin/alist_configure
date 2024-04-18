@@ -1,0 +1,354 @@
+#!/bin/sh
+
+: "
+	install alist
+"
+
+# alist服务
+SERVICE_MODULE_NAME="alist"
+
+# alist脚本根目录
+ALIST_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/alist"
+
+# alist脚本usr目录
+ALIST_PRIVATE_USR="${ALIST_PRIVATE_ROOT}/usr"
+
+# alist安装路径
+ALIST_SYSTEM_PATH="${ROUTER_USR_PATH}/alist"
+
+# alist脚本运行路径
+ALIST_RUN_PATH="${ENTWARE_RUN_PATH}/alist"
+
+# alist的pid文件
+ALIST_PID_FILE="/var/run/${SERVICE_MODULE_NAME}.pid"
+
+# alist版本地址
+ALIST_URL="https://api.github.com/repos/alist-org/alist/releases/latest"
+
+# 下载alist安装包
+downloadPackages()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: downloading the ${SERVICE_MODULE_NAME} file!"
+
+	if [ -z "$(which curl)" ]; then
+		return
+	fi
+
+	# 华硕路由器系统
+	if [ -z "${OPERATING_SYSTEM}" ]; then
+		RouterSystem="$(uname | sed -E 's/[[:upper:]]/\1&/g')"
+	else
+		RouterSystem=${OPERATING_SYSTEM}
+	fi
+
+	# 华硕路由器架构
+	if [ "${ROUTER_ARCHITECTURE}" == "arm64" ]; then
+		RouterArch="arm64"
+	elif [ "${ROUTER_ARCHITECTURE}" == "arm" ]; then
+		RouterArch="arm"
+	elif [ "${ROUTER_ARCHITECTURE}" == "mipsle" ]; then
+		RouterArch="mips"
+	else
+		RouterArch="arm"
+	fi
+	
+	# 获取最新版本号
+	lastVersion="$(curl -s "${ALIST_URL}" | sed -E -n -e 's/^[[:space:]]*\"tag_name\":[[:space:]]*\"(.*)\".*/\1/p')"
+	if [ -z "${lastVersion}" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: get ${SERVICE_MODULE_NAME} version number failed!"
+		return
+	fi
+
+	# 文件名称
+	alist_file="${SERVICE_MODULE_NAME}-${RouterSystem}-musl-${RouterArch}.tar.gz"
+
+	# 下载链接
+	#https://github.com/alist-org/alist/releases/download/v3.11.0/alist-linux-arm-7.tar.gz
+	alist_link="https://github.com/alist-org/alist/releases/download/${lastVersion}/${alist_file}"
+
+	# 判断文件存在
+	if [ -e "${ALIST_PRIVATE_USR}/${alist_file}" ]; then
+		rm -rf "${ALIST_PRIVATE_USR}/${alist_file}"
+	fi
+
+	#curl -o "${ALIST_PRIVATE_USR}\${alist_file}" -# -LJO "${alist_link}"
+}
+
+# 安装alist环境
+installAlistEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ ! -d "${ALIST_SYSTEM_PATH}" ]; then
+		mkdir "${ALIST_SYSTEM_PATH}"
+	fi
+
+	if [ ! -d "${ALIST_PRIVATE_USR}" ]; then
+		mkdir "${ALIST_PRIVATE_USR}"
+	fi
+
+	# 检索文件列表
+	fileList=$(find "${ALIST_PRIVATE_USR}" -name "${SERVICE_MODULE_NAME}*.tar.gz" | sort -s | tail -n 1)
+	
+	# 获取文件压缩包
+	if [ -n "${fileList}" ]; then
+		filePath="${fileList}"
+	else
+		downloadPackages $filePath
+	fi
+
+	if [ -d "${ALIST_SYSTEM_PATH}/bin" ]; then
+		rm -rf "${ALIST_SYSTEM_PATH}/bin"
+	fi
+
+	mkdir "${ALIST_SYSTEM_PATH}/bin"
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: extracting ${SERVICE_MODULE_NAME} file!"
+
+	# 解压安装包
+	tar -xzvf "${filePath}" -C "${ALIST_SYSTEM_PATH}/bin" >/dev/null 2>&1
+}
+
+# 卸载alist环境
+unInstallAlistEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ -d "${ALIST_SYSTEM_PATH}" ]; then
+		rm -rf "${ALIST_SYSTEM_PATH}"
+	fi
+
+	if [ -d "${ALIST_RUN_PATH}" ]; then
+		rm -rf "${ALIST_RUN_PATH}"
+	fi
+}
+
+# 设置alist的JSON配置
+setAlistJsonCfg()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} json config!"
+
+	if [ ! -e "${ALIST_SYSTEM_PATH}/etc/config.json" ]; then
+		HTTPPORT=${ALIST_HTTP_PORT}
+		if [ -z "${HTTPPORT}" ]; then
+			HTTPPORT=5244
+		fi
+		
+		JWT_SECRET=`openssl rand -base64 16`
+		DB_FILE="${ALIST_SYSTEM_PATH}/etc/data/data.db"
+		
+		if [ ! -d "${ALIST_SYSTEM_PATH}/etc/data" ]; then
+			mkdir "${ALIST_SYSTEM_PATH}/etc/data"
+		fi
+		
+		
+		TMP_DIR="${ALIST_SYSTEM_PATH}/etc/data/temp"
+		if [ ! -d "${TMP_DIR}" ]; then
+			mkdir "${TMP_DIR}"
+		fi
+		
+		BLEVE_DIR="${ALIST_SYSTEM_PATH}/etc/data/bleve"
+		if [ ! -d "${BLEVE_DIR}" ]; then
+			mkdir "${BLEVE_DIR}"
+		fi
+		
+		LOG_DIR="${ALIST_SYSTEM_PATH}/etc/data/log"
+		if [ ! -d "${LOG_DIR}" ]; then
+			mkdir "${LOG_DIR}"
+		fi
+		
+		echo '{
+		"force": false,
+		"site_url": "",
+		"cdn": "",
+		"jwt_secret": "'"${JWT_SECRET}"'",
+		"token_expires_in": 48,
+		"database": {
+			"type": "sqlite3",
+			"host": "",
+			"port": 0,
+			"user": "",
+			"password": "",
+			"name": "",
+			"db_file": "'"${DB_FILE}"'",
+			"table_prefix": "x_",
+			"ssl_mode": ""
+		},
+		"scheme": {
+			"address": "0.0.0.0",
+			"http_port": '"${HTTPPORT}"',
+			"https_port": -1,
+			"force_https": false,
+			"cert_file": "",
+			"key_file": "",
+			"unix_file": "",
+			"unix_file_perm": ""
+		},
+		"temp_dir": "'"${TMP_DIR}"'",
+		"bleve_dir": "'"${BLEVE_DIR}"'",
+		"log": {
+			"enable": true,
+			"name": "'"${LOG_DIR}/log.log"'",
+			"max_size": 10,
+			"max_backups": 5,
+			"max_age": 28,
+			"compress": false
+		},
+		"delayed_start": 0,
+		"max_connections": 0,
+		"tls_insecure_skip_verify": true	
+		}' > "${ALIST_SYSTEM_PATH}/etc/config.json"
+	fi
+}
+
+# 设置alist配置
+setAlistCfg()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} config!"
+
+	# 配置alist
+	if [ -e "${ALIST_SYSTEM_PATH}/bin/alist" ]; then
+		
+		# 设置alist的JSON配置
+		setAlistJsonCfg
+		
+		# bin目录链接
+		if [ ! -e "${ALIST_RUN_PATH}/bin" ]; then
+			ln -s "${ALIST_SYSTEM_PATH}/bin" "${ALIST_RUN_PATH}/bin"
+		fi
+		
+		# etc目录链接
+		if [ ! -e "${ALIST_RUN_PATH}/etc" ]; then
+			ln -s "${ALIST_SYSTEM_PATH}/etc" "${ALIST_RUN_PATH}/etc"
+		fi
+
+		# 查看alist管理员密码
+		"${ALIST_SYSTEM_PATH}/bin/alist" admin --data "${ALIST_SYSTEM_PATH}/etc"
+	fi
+}
+
+# 设置alist监控
+setAlistMonit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${ALIST_PRIVATE_ROOT}/etc/alist" ]; then
+			cp -f "${ALIST_PRIVATE_ROOT}/etc/alist" "${ENTWARE_MONITD_PATH}/alist.on"		
+			chmod 600 "${ENTWARE_MONITD_PATH}/alist.on"
+		fi
+
+		if [ -e "${ALIST_PRIVATE_ROOT}/bin/alist_control" ]; then
+			cp -f "${ALIST_PRIVATE_ROOT}/bin/alist_control" "${ALIST_RUN_PATH}"
+			chmod 775 "${ALIST_RUN_PATH}/alist_control"
+		fi
+
+		# 启动ALIST服务
+		waitForMonitSrvProcess 1 "ALIST"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭ALIST服务
+		waitForMonitSrvProcess 0 "ALIST"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		# 等待alist进程退出
+		if [ -e "$ALIST_PID_FILE" ]; then
+			for PID in $(cat "$ALIST_PID_FILE"); do
+				kill $PID
+			done
+		fi
+
+		if [ -e "${ENTWARE_MONITD_PATH}/alist.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/alist.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "ALIST"
+	fi
+}
+
+# 设置alist环境
+setAlistEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置alist监控
+		setAlistMonit $1
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${ALIST_RUN_PATH}" ]; then
+			mkdir "${ALIST_RUN_PATH}"
+		fi
+		
+		if [ ! -d "${ALIST_SYSTEM_PATH}/etc" ]; then
+			mkdir "${ALIST_SYSTEM_PATH}/etc"
+		fi
+
+		# 设置alist配置
+		setAlistCfg
+
+		# 设置alist监控
+		setAlistMonit $1
+	fi
+}
+
+# 初始化alist环境
+initAlistEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	if [ -n "$(pidof alist)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} service is running!"
+		return
+	fi
+	
+	# 安装alist环境
+	installAlistEnv
+	
+	# 设置alist环境
+	setAlistEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放alist环境
+uninitAlistEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	
+	# 设置alist环境
+	setAlistEnv $1
+	
+	# 卸载alist环境
+	unInstallAlistEnv
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放alist环境
+		uninitAlistEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化alist环境
+		initAlistEnv $1
+		;;
+	*)
+		;;
+esac

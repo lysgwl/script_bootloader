@@ -1,0 +1,2 @@
+check program FREEMEM path "/opt/run/freemem/freemem_control" every 120 cycles
+    if status != 0 then unmonitor

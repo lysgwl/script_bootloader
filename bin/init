@@ -1,0 +1,174 @@
+#!/bin/sh
+
+# 当前路径
+if [ ! -z "$2" ]; then
+	SCRIPT_CUR_PATH="$2"
+else
+	SCRIPT_CUR_PATH=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+fi
+
+# 初始化运行环境
+initRunEnv()
+{
+	# 路由器jffs路径
+	ROUTER_JFFS_PATH="/jffs"
+	
+	# 脚本运行锁
+	SCRIPT_RUN_LOCK="/var/run/bootloader.pid"
+	
+	# 脚本路径
+	SCRIPT_SYS_PATH="${USB_MOUNT_POINT}/${SCRIPT_DIRNAME}"
+
+	# 脚本bin路径
+	SCRIPT_BIN_PATH="${SCRIPT_SYS_PATH}/bin"
+
+	# 脚本tmp路径
+	SCRIPT_TMP_PATH="${SCRIPT_SYS_PATH}/tmp"
+
+	# 脚本etc路径
+	SCRIPT_ETC_PATH="${SCRIPT_SYS_PATH}/etc"
+
+	# 脚本usr路径
+	SCRIPT_USR_PATH="${SCRIPT_SYS_PATH}/usr"
+
+	# 脚本var路径
+	SCRIPT_VAR_PATH="${SCRIPT_SYS_PATH}/var"
+
+	# basicAddons插件
+	BASIC_ADDONS_PATH="${SCRIPT_USR_PATH}/basicAddons"
+
+	# expandAddons插件
+	EXPAND_ADDONS_PATH="${SCRIPT_USR_PATH}/expandAddons"
+
+	# 路由器usr路径
+	ROUTER_USR_PATH="${USB_MOUNT_POINT}/usr"
+	
+	# entware网站路径
+	ENTWARE_HOST="http://mirrors.bfsu.edu.cn/entware"
+
+	# entware安装路径
+	ENTWARE_SYSTEM_PATH="${ROUTER_USR_PATH}/entware"
+
+	# entware运行路径
+	ENTWARE_RUN_PATH="${ENTWARE_SYSTEM_PATH}/run"
+
+	# monit配置目录路径
+	ENTWARE_MONITD_PATH="${ENTWARE_SYSTEM_PATH}/etc/monit.d"
+
+	# profile.d配置目录路径
+	ENTWARE_PROFILED_PATH="${ENTWARE_SYSTEM_PATH}/etc/profile.d"
+
+	# web站点路径
+	USR_WEBSITE_PATH="${ROUTER_USR_PATH}/site"
+	
+	if [ ! -d  "${ROUTER_USR_PATH}" ]; then
+		mkdir "${ROUTER_USR_PATH}"
+	fi
+}
+
+# 初始化启动环境
+initBootEnv()
+{
+	# 服务功能
+	SERVICE_FUNCTION="boot"
+	
+	# U盘script目录挂载点
+	USB_MOUNT_POINT=$(echo "${SCRIPT_CUR_PATH}" | sed "s/\/`echo ${SCRIPT_DIRNAME}`.*//")
+	
+	#
+	COUNT=0
+	while [ ${COUNT} -lt 20 ]; do
+		SERVICE_STARTUP_SUCCESS=$(nvram get success_start_service)
+		
+		if [ ${SERVICE_STARTUP_SUCCESS} -eq 1 ]; then
+			break
+		else
+			sleep 30
+			COUNT=$((${COUNT}+1))
+		fi
+	done
+	
+	# 初始化运行环境
+	initRunEnv
+}
+
+# 初始化关闭环境
+initShutdownEnv()
+{
+	# 服务功能
+	SERVICE_FUNCTION="shutdown"
+	
+	# U盘script目录挂载点
+	USB_MOUNT_POINT=$(echo "${SCRIPT_CUR_PATH}" | sed "s/\/`echo ${SCRIPT_DIRNAME}`.*//")
+	
+	# 初始化运行环境
+	initRunEnv
+}
+
+# 初始化安装环境
+initInstallEnv()
+{
+	# 服务功能
+	SERVICE_FUNCTION="install"
+	
+	# 路由器架构
+	case "$(uname -m)" in
+		"aarch64")
+			ROUTER_ARCHITECTURE="arm64"
+			;;
+		"armv7l")
+			ROUTER_ARCHITECTURE="arm"
+			;;
+		"mips")
+			ROUTER_ARCHITECTURE="mipsle"
+			;;
+		*)
+			echo -e "($(basename $0)): $$ \033[1;43;31mFAILURE\033[0m: router architecture ss unknown!"
+			exit 1
+			;;
+	esac
+	
+	# 获取父路径
+	parent_path=$(dirname $(dirname $PWD))
+	
+	# U盘script目录挂载点
+	USB_MOUNT_POINT=$(echo "${SCRIPT_CUR_PATH}" | sed "s/\/`echo ${SCRIPT_DIRNAME}`.*//")
+	
+	# 初始化运行环境
+	initRunEnv
+}
+
+# 释放安装环境
+uninitInstallEnv()
+{
+	# 服务功能
+	SERVICE_FUNCTION="uninstall"
+
+	# U盘script目录挂载点
+	USB_MOUNT_POINT=$(echo "${SCRIPT_CUR_PATH}" | sed "s/\/`echo ${SCRIPT_DIRNAME}`.*//")
+	
+	# 初始化运行环境
+	initRunEnv
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放安装环境
+		uninitInstallEnv
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化安装环境
+		initInstallEnv
+		;;
+	${SCRIPT_BOOT_FLAG})
+		# 初始化启动环境
+		initBootEnv
+		;;
+	${SCRIPT_SHUTDOWN_FLAG})
+		# 初始化关闭环境
+		initShutdownEnv
+		;;
+	*)
+		exit 1
+		;;
+esac

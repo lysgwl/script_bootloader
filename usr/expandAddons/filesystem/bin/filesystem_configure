@@ -1,0 +1,216 @@
+#!/bin/sh
+
+: "
+	install filesystem
+"
+
+# filesystem服务
+SERVICE_MODULE_NAME="filesystem"
+
+# filesystem脚本根目录
+FILESYSTEM_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/filesystem"
+
+# filesystem脚本usr目录
+FILESYSTEM_PRIVATE_USR="${FILESYSTEM_PRIVATE_ROOT}/usr"
+
+# filesystem脚本var目录
+FILESYSTEM_PRIVATE_VAR="${FILESYSTEM_PRIVATE_ROOT}/var"
+
+# filesystem安装路径
+FILESYSTEM_SYSTEM_PATH="${ROUTER_USR_PATH}/filesystem"
+
+# filesystem脚本运行路径
+FILESYSTEM_RUN_PATH="${ENTWARE_RUN_PATH}/filesystem"
+
+# filesystem的pid文件
+FILESYSTEM_PID_FILE="/var/run/${SERVICE_MODULE_NAME}.pid"
+
+# davfs2配置路径
+DAVFS2_CFG_PATH="/opt/etc/davfs2"
+
+# davfs2配置文件
+DAVFS2_CFG_FILE="/opt/etc/davfs2/davfs2.conf"
+
+# davfs2账户配置
+DAVFS2_SECRETS_FILE="/opt/etc/davfs2/secrets"
+
+# 安装filesystem环境
+installFileSystemEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+
+    if [ ! -d "${FILESYSTEM_SYSTEM_PATH}" ]; then
+		mkdir "${FILESYSTEM_SYSTEM_PATH}"
+	fi
+
+    # 安装davfs2服务
+	installPackages $1 "davfs2"
+}
+
+# 卸载filesystem环境
+unInstallFileSystemEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 卸载davfs2服务
+	installPackages $1 "davfs2"
+
+    if [ -d "${FILESYSTEM_SYSTEM_PATH}" ]; then
+		rm -rf "${FILESYSTEM_SYSTEM_PATH}"
+	fi
+
+	if [ -d "${FILESYSTEM_RUN_PATH}" ]; then
+		rm -rf "${FILESYSTEM_RUN_PATH}"
+	fi
+
+    if [ -d "${DAVFS2_CFG_PATH}" ]; then
+        rm -rf "${DAVFS2_CFG_PATH}"
+    fi
+}
+
+# 设置filesystem配置
+setFileSystemCfg()
+{
+    if [ -e "${DAVFS2_CFG_FILE}" ]; then
+        # use_locks
+        use_locks=`sed -E -n 's/^# use_locks[[:space:]]+([0-9]+)/\1/p' "${DAVFS2_CFG_FILE}"`
+        if [ -n "${use_locks}" ]; then
+            sed -i -E -e 's/^# (use_locks\s+)[0-9]+/\11/' "${DAVFS2_CFG_FILE}"
+        fi
+
+        # ignore_dav_header
+        ignore_dav_header=`sed -E -n 's/^# ignore_dav_header[[:space:]]+([0-9]+)/\1/p' "${DAVFS2_CFG_FILE}"`
+        if [ -n "${ignore_dav_header}" ]; then
+            sed -i -E -e 's/^# (ignore_dav_header\s+)[0-9]+/\11/' "${DAVFS2_CFG_FILE}"
+        fi
+    fi
+
+    if [ -e "${DAVFS2_SECRETS_FILE}" ]; then
+        chmod 600 "${DAVFS2_SECRETS_FILE}"
+    fi
+
+    # 复制配置文件
+    if [ -e "${FILESYSTEM_PRIVATE_VAR}/shareconf" ]; then
+        cp -f "${FILESYSTEM_PRIVATE_VAR}/shareconf" "${FILESYSTEM_SYSTEM_PATH}/etc"
+    fi
+
+    # etc目录链接
+    if [ ! -e "${FILESYSTEM_RUN_PATH}/etc" ]; then
+        ln -s "${FILESYSTEM_SYSTEM_PATH}/etc" "${FILESYSTEM_RUN_PATH}/etc"
+    fi
+}
+
+# 设置filesystem监控
+setFileSystemMonit()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+    if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+        if [ -e "${FILESYSTEM_PRIVATE_ROOT}/etc/filesystem" ]; then
+			cp -f "${FILESYSTEM_PRIVATE_ROOT}/etc/filesystem" "${ENTWARE_MONITD_PATH}/filesystem.on"		
+			chmod 600 "${ENTWARE_MONITD_PATH}/filesystem.on"
+		fi
+
+        if [ -e "${FILESYSTEM_PRIVATE_ROOT}/bin/filesystem_control" ]; then
+			cp -f "${FILESYSTEM_PRIVATE_ROOT}/bin/filesystem_control" "${FILESYSTEM_RUN_PATH}"
+			chmod 775 "${FILESYSTEM_RUN_PATH}/filesystem_control"
+		fi
+
+        # 启动FILESYSTEM服务
+		waitForMonitSrvProcess 1 "FILESYSTEM"
+        if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+    elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+        # 关闭FILESYSTEM服务
+		waitForMonitSrvProcess 0 "FILESYSTEM"
+        if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+        if [ -e "${ENTWARE_MONITD_PATH}/filesystem.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/filesystem.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "FILESYSTEM"
+    fi
+}
+
+# 设置filesystem环境
+setFileSystemEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!" 
+
+    if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+        # 设置filesystem监控
+        setFileSystemMonit $1
+    elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+        if [ ! -d "${FILESYSTEM_RUN_PATH}" ]; then
+			mkdir "${FILESYSTEM_RUN_PATH}"
+		fi
+
+        if [ ! -d "${FILESYSTEM_SYSTEM_PATH}/etc" ]; then
+			mkdir "${FILESYSTEM_SYSTEM_PATH}/etc"
+		fi
+
+        # 设置filesystem配置
+        setFileSystemCfg
+
+        # 设置filesystem监控
+        setFileSystemMonit $1
+    fi
+}
+
+# 初始化filesystem环境
+initFileSystemEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+    
+    if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+    # 安装filesystem环境
+    installFileSystemEnv $1
+
+    # 设置filesystem环境
+    setFileSystemEnv $1
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放filesystem环境
+uninitFileSystemEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+
+    if [ "$(which opkg)" != "/opt/bin/opkg" ] || [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+    # 设置filesystem环境
+    setFileSystemEnv $1
+
+    # 安装filesystem环境
+    unInstallFileSystemEnv $1
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放filesystem环境
+		uninitFileSystemEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化filesystem环境
+		initFileSystemEnv $1
+		;;
+	*)
+		;;
+esac

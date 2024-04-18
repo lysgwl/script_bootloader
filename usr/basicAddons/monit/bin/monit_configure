@@ -1,0 +1,257 @@
+#!/bin/sh
+
+: "	
+	monit环境配置
+"
+
+# monit服务
+SERVICE_MODULE_NAME="monit"
+
+# monit脚本根目录
+MONIT_PRIVATE_ROOT="${BASIC_ADDONS_PATH}/monit"
+
+# monit安装路径
+MONIT_SYSTEM_PATH="${ROUTER_USR_PATH}/monit"
+
+# S99monit启动文件
+S99MONIT_SYSTEM_FILE="/opt/etc/init.d/S99monit"		#${ENTWARE_SYSTEM_PATH}/etc/init.d/S99monit
+
+# monitrc配置文件
+MONITRC_SYSTEM_FILE="/opt/etc/monitrc"		#${ENTWARE_SYSTEM_PATH}/etc/monitrc
+
+# 安装monit环境
+installMonitEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# monit
+	installPackages $1 "monit"
+}
+
+# 安装monit环境
+unInstallMonitEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# monit
+	installPackages $1 "monit"
+	
+	if [ -d "${MONIT_SYSTEM_PATH}" ]; then
+		rm -rf "${MONIT_SYSTEM_PATH}"
+	fi
+	
+	if [ -d "${ENTWARE_MONITD_PATH}" ]; then
+		rm -rf "${ENTWARE_MONITD_PATH}"
+	fi
+}
+
+# 设置S99monit脚本
+setS99monit()
+{
+	if [ ! -e "${S99MONIT_SYSTEM_FILE}" ]; then
+		return
+	fi
+	
+	# S99monit备份
+	if [ -e "${MONIT_SYSTEM_PATH}/S99monit.bak" ]; then
+		rm -rf "${MONIT_SYSTEM_PATH}/S99monit.bak"
+	fi
+	
+	cp -f "${S99MONIT_SYSTEM_FILE}" "${MONIT_SYSTEM_PATH}/S99monit.bak"
+	
+	# S99monit配置
+	if [ -z "`sed -n '/^# *ARGS/p' ${S99MONIT_SYSTEM_FILE}`" ]; then
+		sed -i '/^ARGS/s/^/#/' "${S99MONIT_SYSTEM_FILE}"	#关键字前加注释#
+	fi
+	
+	if [ -z "`sed -n '/^ARGS/p' ${S99MONIT_SYSTEM_FILE}`" ]; then
+		sed -i '/^#ARGS/ a\ARGS="-c /opt/etc/monitrc"' "${S99MONIT_SYSTEM_FILE}"
+	fi
+}
+
+# 设置monitrc脚本
+setMonitrc()
+{
+	if [ ! -e "${MONITRC_SYSTEM_FILE}" ]; then
+		return
+	fi
+	
+	# monitrc备份
+	if [ -e "${MONIT_SYSTEM_PATH}/monitrc.bak" ]; then
+		rm -rf "${MONIT_SYSTEM_PATH}/monitrc.bak"
+	fi
+	
+	cp -f "${MONITRC_SYSTEM_FILE}" "${MONIT_SYSTEM_PATH}/monitrc.bak"
+	
+	# 查找无#注释,添加注释 : set log syslog
+	# sed -i '/^#.*set log syslog$/s/^#//g' "${MONITRC_SYSTEM_FILE}"	#取消注释
+	if [ -z "`sed -n '/^#.*set log syslog/p' ${MONITRC_SYSTEM_FILE}`" ]; then
+		sed -i '/set log syslog/s/^/#/g' "${MONITRC_SYSTEM_FILE}"		#添加注释
+		#sed -i 's/^set log syslog/#&/' "${MONITRC_SYSTEM_FILE}"		#添加注释
+		#sed -i 's/set log syslog/#&/' "${MONITRC_SYSTEM_FILE}"			#添加注释
+	fi
+	
+	# 查找有#注释,取消注释 : set pidfile
+	if [ ! -z "`sed -n '/^#.*set pidfile/p' ${MONITRC_SYSTEM_FILE}`" ]; then
+		sed -i '/^#.*set pidfile/s/#//' "${MONITRC_SYSTEM_FILE}"		#取消注释
+	fi
+	
+	# 查找有#注释,取消注释 : set idfile
+	if [ ! -z "`sed -n '/^#.*set idfile/p' ${MONITRC_SYSTEM_FILE}`" ]; then
+		sed -i '/^#.*set idfile/s/#//' "${MONITRC_SYSTEM_FILE}"			#取消注释
+	fi
+	
+	# 查找有#注释,取消注释 : set statefile
+	if [ ! -z "`sed -n '/^#.*set statefile/p' ${MONITRC_SYSTEM_FILE}`" ]; then
+		sed -i '/^#.*set statefile/s/#//' "${MONITRC_SYSTEM_FILE}"		#取消注释
+	fi
+	
+	# 获取两个字符之间数字
+	# `cat ${MONITRC_SYSTEM_FILE} | grep -E "set httpd port" | awk '{t=$0;gsub(/.*port|and.*/,"",t);print t}'` 
+	
+	# 获取monit http端口号
+	#httpPort=`grep -o -P '(?<=set httpd port ).*(?=and)' "${MONITRC_SYSTEM_FILE}"`
+	#httpPort=`grep '^.*set httpd port' "${MONITRC_SYSTEM_FILE}" | sed -e 's/.*port\(.*\).*and/\1/' | sed s/[[:space:]]//g`
+
+	HTTPPORT=`grep '^.*set httpd port' "${MONITRC_SYSTEM_FILE}" | awk -v FS="(port|and)" '{print $2}' | sed s/[[:space:]]//g`
+	if [ ${HTTPPORT} != ${MONIT_HTTP_PORT} ]; then
+		# 修改monit http端口号
+		sed -i -e "s/\(set httpd port \).*\( and\)/\1`echo ${MONIT_HTTP_PORT}`\2/g" "${MONITRC_SYSTEM_FILE}"
+		
+		# 替换关键字下一行
+		#sed -i "/set httpd port/{n;s/\(use address \).*\( #\)/\1localhost\2/g}" ./monitrc
+	fi
+	
+	# 替换use address值为0.0.0.0
+	sed -i -e "s/\(use address \).*\(  #\)/\10.0.0.0\2/g" "${MONITRC_SYSTEM_FILE}"
+	
+	# 替换allow值为0.0.0.0/0.0.0.0
+	sed -i "/use address/{n;s/\(allow \).*\(  #\)/\10.0.0.0\/0.0.0.0\2/g}" "${MONITRC_SYSTEM_FILE}"
+	
+	# 添加monit.d环境
+	if [ -z "`sed -n "/include.*\/opt\/etc\/monit.d\//p" ${MONITRC_SYSTEM_FILE}`" ]; then
+		sed -i "/#.*\/etc\/monit.d\//a\include /opt/etc/monit.d/*.on" "${MONITRC_SYSTEM_FILE}"
+	fi
+}
+
+# 设置monit环境
+setMonitEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${MONIT_SYSTEM_PATH}" ]; then
+			mkdir "${MONIT_SYSTEM_PATH}"
+		fi
+		
+		if [ ! -d "${ENTWARE_MONITD_PATH}" ]; then
+			mkdir "${ENTWARE_MONITD_PATH}"
+		fi
+		
+		if [ -e "${S99MONIT_SYSTEM_FILE}" ]; then
+			if [ `${S99MONIT_SYSTEM_FILE} check | awk '{if($0!~/alive/){print 0}else{print 1}}'` -eq 0 ]; then
+			
+				# 设置S99monit脚本
+				setS99monit
+	
+				# 设置monitrc脚本
+				setMonitrc
+			fi
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		if [ -e "${MONIT_SYSTEM_PATH}/S99monit.bak" ]; then
+			rm -rf "${MONIT_SYSTEM_PATH}/S99monit.bak"
+		fi
+	
+		if [ -e "${MONIT_SYSTEM_PATH}/monitrc.bak" ]; then
+			rm -rf "${MONIT_SYSTEM_PATH}/monitrc.bak"
+		fi
+		
+		result=$(find "/opt/etc/init.d" -name "S*monit")
+		if [ -n "$result" ]; then
+			rm -rf "$result"
+		fi
+	fi
+}
+
+# 打开monit服务
+openMonitService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: enable the ${SERVICE_MODULE_NAME} service!"
+	
+	if [ ! -e "${S99MONIT_SYSTEM_FILE}" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: enable the monit!"
+		return
+	fi
+	
+	if [ `${S99MONIT_SYSTEM_FILE} check | awk '{if($0!~/alive/){print 0}else{print 1}}'` -eq 0 ]; then
+		${S99MONIT_SYSTEM_FILE} start
+	fi
+	
+	hostname=$(uname -a | awk '{print $2}')
+	
+	if [ -n "${hostname}" ]; then
+		/opt/bin/monit start ${hostname}
+	else
+		/opt/bin/monit start all
+	fi
+}
+
+# 打开monit服务
+closeMonitServer()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the ${SERVICE_MODULE_NAME} service!"
+	
+	if [ -e "${S99MONIT_SYSTEM_FILE}" ]; then
+		if [ `${S99MONIT_SYSTEM_FILE} check | awk '{if($0!~/alive/){print 0}else{print 1}}'` -eq 1 ]; then
+			clearMonitSrvList
+		fi
+	fi
+}
+
+# 初始化monit环境
+initMonitEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 安装monit环境
+	installMonitEnv $1
+	
+	# 设置monit环境
+	setMonitEnv $1
+	
+	# 开启monit服务
+	openMonitService	
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放monit环境
+uninitMonitEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 关闭monit服务
+	closeMonitServer
+	
+	# 设置monit环境
+	setMonitEnv $1
+	
+	# 卸载monit环境
+	unInstallMonitEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放monit环境
+		uninitMonitEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化monit环境
+		initMonitEnv $1
+		;;
+	*)
+		;;
+esac

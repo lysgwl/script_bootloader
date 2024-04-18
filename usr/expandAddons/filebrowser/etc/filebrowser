@@ -1,0 +1,4 @@
+check process FILEBROWSER with pidfile "/var/run/filebrowser.pid"
+    start program = "/opt/run/filebrowser/filebrowser_control 1"
+    stop program = "/opt/run/filebrowser/filebrowser_control 0"
+    if does not exist then restart

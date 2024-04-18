@@ -1,0 +1,292 @@
+#!/bin/sh
+
+: "
+	feature function
+"
+
+# 暂停中止命令
+pause()
+{
+	read -n 1 -p "$*" inp
+	
+	if [ "$inp" != '' ]; then
+		echo -ne '\b \n'
+	fi
+}
+
+getDevFromScsiUsb()
+{
+	devName=$(cat /proc/partitions | awk '{print $4}' | grep -E "(^|[ ])sd[a-z]+($|[ ])")
+	if [ -z "${devName}" ]; then
+		return
+	fi
+	
+	listDisk=$(df -h | grep "^/dev/${devName}" | sort -s)
+	if [ -z "${listDisk}" ]; then
+		return
+	fi
+	
+	echo "$listDisk"
+}
+
+# 安装软件包
+installPackages()
+{
+	flag=$1
+	section=$2
+
+	if [ "$(which opkg)" != "/opt/bin/opkg" ]; then
+		return
+	fi
+
+	if [ -z "${section}" ]; then
+		return
+	fi
+
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} package ${section}!"
+
+	if [ ${flag} == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -z "$(opkg list-installed | grep -w ${section})" ]; then
+			/opt/bin/opkg install ${section} >/dev/null 2>&1
+			if [ $? != 0 ]; then
+				echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: services ${section} ${SERVICE_FUNCTION} failed!"
+			fi
+		fi
+	elif [ ${flag} == ${SCRIPT_UNINIT_FLAG} ]; then
+		if [ -n "$(opkg list-installed | grep -w ${section})" ]; then
+			/opt/bin/opkg remove ${section} --autoremove >/dev/null 2>&1
+			if [ $? != 0 ]; then
+				echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: services ${section} ${SERVICE_FUNCTION} failed!"
+			fi
+		fi
+	fi
+}
+
+# 从配置文件安装软件包
+installPackagesFromConf()
+{
+	flag=$1
+	section=$2
+	confile=$3
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ]; then
+		return
+	fi
+	
+	if [ -z "${section}" ] || [ ! -e "${confile}" ]; then
+		return
+	fi
+	
+	sections=$(awk -F '[][]' '/\[.*]/{print $2}' ${confile})
+	if [ -z "${sections}" ]; then
+		return
+	fi
+	
+	echo "${sections}" | grep "${section}" >/dev/null 2>&1
+	if [ $? == 1 ]; then
+		return
+	fi
+	
+: <<'COMMENT'
+	#awk "/\[tools\]/{a=1}a==1" list_packages | sed -e'1d' -e '/^$/d' -e 's/[ \t]*$//g' -e 's/^[ \t]*//g' -e 's/[ ]/@G@/g' -e '/\[/,$d'
+	#sed -n '/\['python'\]/,/^$/p' list_packages | grep -Ev '\[|\]|^$' 
+COMMENT
+
+	list=`awk '
+		/\['"${section}"'\]/ {flag=1; next}
+		/\[*\]/		{flag=0; next}
+		flag 		{printf("%s\n",$0)}
+		' ${confile}`
+			
+	for item in ${list}; do
+		key=`echo ${item}` # sed '$s/.$//
+		
+		if [ -z "${key}" ]; then
+			continue
+		fi
+		
+		echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} package ${key}!"
+
+		if [ ${flag} == ${SCRIPT_INIT_FLAG} ]; then
+			if [ -z "$(/opt/bin/opkg list-installed | grep -w ${key})" ]; then
+				/opt/bin/opkg install ${key} >/dev/null 2>&1
+				if [ $? != 0 ]; then
+					echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: services ${key} ${SERVICE_FUNCTION} failed!"
+				fi
+			fi
+		elif [ ${flag} == ${SCRIPT_UNINIT_FLAG} ]; then
+			if [ -n "$(/opt/bin/opkg list-installed | grep -w ${key})" ]; then
+				/opt/bin/opkg remove ${key} --autoremove >/dev/null 2>&1
+				if [ $? != 0 ]; then
+					echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: services ${key} ${SERVICE_FUNCTION} failed!"
+				fi
+			fi
+		fi
+	done
+}
+
+# 检查monit服务列表
+checkMonitSrvList()
+{
+	srvName=$1
+	if [ -z "$srvName" ]; then
+		return 0
+	fi
+
+	srvList=$(/opt/bin/monit -B summary | sed -E -n -e '1,2d' -e 's/^[[:space:]]*([^[:space:]]+)[[:space:]]+.*/\1/p')
+	if [ -z "$srvList" ]; then
+		return 0
+	fi
+
+	result=$(echo $srvList | grep -w "$srvName")
+	if [ -z "$result" ]; then
+		return 0
+	fi
+	
+	return 1
+}
+
+# 检查服务状态
+checkMonitSrvStatus()
+{
+	srvName=$1
+	if [ -z "$srvName" ]; then
+		return 0
+	fi
+	
+	srvStatus=$(/opt/bin/monit -B status "${srvName}" | sed -E -n -e 's/^[[:space:]]*status[[:space:]]+(.*)/\1/p')
+	if [ "$srvStatus" == "Not monitored" ]; then
+		return 0
+	fi
+	
+	if [ "$srvStatus" == "OK" ]; then
+		return 1
+	fi
+	
+	return 2
+}
+
+# 等待服务
+waitForMonitSrvProcess()
+{
+	flag=$1
+	srvName=$2
+
+	ret=0
+	retry=0
+	
+	# 0：关闭服务
+	# 1：开启服务
+	# 2：等待服务
+	if [ $flag -eq 0 ]; then
+		# 检查monit服务列表
+		checkMonitSrvList "$srvName"
+
+		if [ $? -eq 0 ]; then
+			ret=1
+		else
+			while [ 1 ]; do
+				# 检查服务状态
+				checkMonitSrvStatus "$srvName"
+
+				result=$?
+				if [ $result -eq 0 ]; then
+					ret=1
+					break
+				fi
+
+				if [ $retry -ge 10 ]; then
+					ret=0
+					break
+				fi
+
+				let retry=retry+1
+				/opt/bin/monit stop "$srvName" > /dev/null 2>&1
+
+				echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: waiting for service[$srvName] to close! 2s\n"
+				sleep 2
+			done
+		fi
+	else
+		/opt/bin/monit reload > /dev/null 2>&1
+		
+		while [ 1 ]; do
+			# 检查monit服务列表
+			checkMonitSrvList "$srvName"
+
+			result=$?
+			if [ $flag -eq 1 ]; then
+				if [ $result -eq 1 ]; then
+					/opt/bin/monit start "$srvName" > /dev/null 2>&1
+
+					ret=1
+					break
+				else
+					if [ $retry -ge 5 ]; then
+						ret=0
+						break
+					fi
+
+					let retry=retry+1
+					echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: waiting for service[$srvName] to loading! 2s\n"
+				fi
+			else
+				if [ $result -eq 0 ]; then
+					ret=1
+					break
+				fi
+
+				if [ $retry -ge 3 ]; then
+					ret=0
+					break
+				fi
+
+				echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: waiting for refresh of service list! 2s\n"
+			fi
+
+			sleep 2
+		done
+	fi
+
+	return ${ret}
+}
+
+# 清除monit服务
+clearMonitSrvList()
+{
+	if [ "$(which monit)" != "/opt/bin/monit" ]; then
+		return
+	fi
+	
+	# 停止monit所有服务
+	/opt/bin/monit stop all
+	
+	# 枚举服务等待关闭
+	for service in $(/opt/bin/monit -B summary | sed -E -n -e '1,2d' -e 's/^[[:space:]]*([^[:space:]]+)[[:space:]]+.*/\1/p'); do
+		while [ "$(/opt/bin/monit -B status "$service" | sed -E -n -e 's/^[[:space:]]*status[[:space:]]+(.*)/\1/p')" != "Not monitored" ]; do
+			echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: waiting for the service process[$service] to exit! 2s\n"
+			sleep 2
+		done
+	done
+	
+	# 关闭monit服务
+	/opt/bin/monit quit
+	
+	# 等待monit退出
+	while [ -n "$(pidof monit)" ]; do
+		echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: waiting for the service process[monit] to exit! 2s\n"
+		sleep 2
+	done
+	
+	if [ -e "/opt/etc/monitrc" ]; then
+		monit_id_file="$(sed -E -n -e 's/^set[[:space:]]+idfile[[:space:]]+([^[:space:]]+)/\1/p' "/opt/etc/monitrc")"
+		if [ -e "${monit_id_file}" ]; then
+			rm -rf "${monit_id_file}"
+		fi
+		
+		monit_state_file="$(sed -E -n -e 's/^set[[:space:]]+statefile[[:space:]]+([^[:space:]]+)/\1/p' "/opt/etc/monitrc")"
+		if [ -e "${monit_state_file}" ]; then
+			rm -rf "${monit_state_file}"
+		fi
+	fi
+}

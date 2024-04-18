@@ -1,0 +1,56 @@
+#!/bin/sh
+
+: "
+	bash control
+"
+
+# 开启Bash服务
+openBashService()
+{
+	echo -e "($(basename $0)): $$ *--------- enable bash service! ---------*"
+	
+	# 检测系统/etc/shells文件
+	if [ ! -e "/etc/shells" ]; then
+		if [ ! -e "/opt/etc/shells" ]; then
+			echo -e "($(basename $0)): $$ \033[1;43;31mFAILURE\033[0m: shells not exist! /opt/etc/shells"
+			exit 1
+		fi
+		
+		cat "/opt/etc/shells" > "/etc/shells"
+	fi
+	
+	# 启用/opt/bin/bash
+	if [ -z "`sed -n "/\/opt\/bin\/bash/p" "/etc/shells"`" ]; then
+		echo "/opt/bin/bash" >> "/etc/shells"
+	fi
+	
+	# 修改用户shell为bash
+	SBL_USERNAME="$(nvram get sbl_username)"
+	if [ -n "`sed -n "/^'"${SBL_USERNAME}"'\|\/bin\/sh/p" "/etc/passwd"`" ]; then
+		sed -i '/^'"${SBL_USERNAME}"'.*$/s#/bin/sh#/opt/bin/bash#' "/etc/passwd"
+	fi
+	
+	touch "/var/run/bash_enabled"
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable bash service!"
+}
+
+# 关闭Bash服务
+closeBashService()
+{
+	echo -e "($(basename $0)): $$ *--------- disable bash service! ---------*"
+	
+	sed -i '/^'"${ADMINUSER}"'.*$/s#/opt/bin/bash#/bin/sh#' "/etc/passwd"
+	sed -i '/bash/d' "/etc/shells"
+	rm -f "/var/run/bash_enabled"
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: disable bash service!"
+}
+
+case ${1} in
+	0)
+		closeBashService
+		;;
+	1)
+		openBashService
+		;;
+esac		

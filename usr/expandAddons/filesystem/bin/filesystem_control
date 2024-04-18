@@ -1,0 +1,81 @@
+#!/bin/sh
+
+: "
+	filesystem control
+"
+
+# 获取当前脚本路径
+basePath=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+#echo "${basePath}" >> /mnt/sda1/s1.log
+
+# 开启filesystem服务
+openFileSystemService()
+{
+    echo -e "($(basename $0)): $$ *--------- enable filesystem service! ---------*"
+
+    if [ ! -e "${basePath}/etc/shareconf" ]; then
+        echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: filesystem service cannot find configuration file!"
+		return
+    fi
+
+    list_webdav=`sed -n '/^.*webdav/p' "${basePath}/etc/shareconf"`
+    if [ -n "${list_webdav}" ] && [ -e "/opt/etc/davfs2/secrets" ]; then
+        IFS=$'\n'
+        for line in ${list_webdav}; do
+            count=`echo $line | awk -F' ' '{print NF}'`
+            if [ ${count} != 5 ]; then
+                continue
+            fi
+
+            eval $(echo $line | awk '{
+				    printf("flag=%s;url=%s;username=%s;userpasswd=%s;path=%s;",
+					        $1,$2,$3,$4,$5)}
+			    ')
+
+            result=`sed -n "s|${url}|&|p" "/opt/etc/davfs2/secrets"`
+            if [ -n "${result}" ]; then
+                sed -i "\|${url}|d" "/opt/etc/davfs2/secrets"
+            fi
+            
+            printf '"%s" %5s %s %5s %s\n' ${url} "" ${username} "" ${userpasswd} >> "/opt/etc/davfs2/secrets"
+            if [ -z "${path}" ]; then
+                continue
+            fi
+
+            if [ ! -d "${path}" ]; then
+                mkdir -p "${path}"
+            fi
+
+            if ! grep -qs '${path}' /proc/mounts; then
+                if [ -d "/opt/var/run/mount.davfs" ]; then
+                    if [ "$(ls -A /opt/var/run/mount.davfs)" ]; then
+                        rm -rf /opt/var/run/mount.davfs/*
+                    fi
+                fi
+
+                mount -t davfs ${url} ${path}
+		    fi
+        done
+    fi
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable filesystem service!"
+}
+
+# 关闭filesystem服务
+closeFileSystemService()
+{
+    echo -e "($(basename $0)): $$ *--------- disable filesystem service! ---------*"
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: disable filesystem service!"
+}
+
+case $1 in
+	0)
+        # 关闭filesystem服务
+		closeFileSystemService
+		;;
+	1)
+        # 开启filesystem服务
+		openFileSystemService
+		;;
+esac

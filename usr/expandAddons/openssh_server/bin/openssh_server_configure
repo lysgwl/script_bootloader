@@ -1,0 +1,277 @@
+#!/bin/sh
+
+: "
+	install openssh_server
+"
+
+# openssh_server服务
+SERVICE_MODULE_NAME="openssh_server"
+
+# openssh_server脚本根目录
+OPENSSH_SERVER_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/openssh_server"
+
+# openssh_server安装路径
+OPENSSH_SERVER_SYSTEM_PATH="${ROUTER_USR_PATH}/openssh_server"
+
+# openssh_server脚本运行路径
+OPENSSH_SERVER_RUN_PATH="${ENTWARE_RUN_PATH}/openssh_server"
+
+# openssh_server配置文件
+OPENSSH_SERVER_SSHD_CONFIG="${ENTWARE_SYSTEM_PATH}/etc/ssh/sshd_config"
+
+# openssh_server服务配置
+OPENSSH_SERVER_SSHD_SERVICE="${ENTWARE_SYSTEM_PATH}/etc/init.d/S*sshd"
+
+# ssh秘钥key文件
+OPENSSH_SERVER_SSH_RSAKEY="${ENTWARE_SYSTEM_PATH}/etc/ssh/ssh_host_rsa_key"
+
+# 安装openssh_server环境
+installOpensshEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# openssh-server-pam
+	installPackages $1 "openssh-server-pam"
+	
+	# openssh-server-pam
+	installPackages $1 "openssh-moduli"
+}
+
+# 卸载openssh_server环境
+unInstallOpensshEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# openssh-server-pam
+	installPackages $1 "openssh-server-pam"
+	
+	# openssh-server-pam
+	installPackages $1 "openssh-moduli"
+	
+	if [ -e "${OPENSSH_SERVER_SYSTEM_PATH}/sshd_config.bak" ]; then
+		rm -rf "${OPENSSH_SERVER_SSHD_CONFIG}"
+		cp -f "${OPENSSH_SERVER_SYSTEM_PATH}/sshd_config.bak"  "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+	
+	rm -rf "${OPENSSH_SERVER_SSH_RSAKEY}"
+	rm -rf "${OPENSSH_SERVER_SSH_RSAKEY}.pub"
+
+	if [ ! -d "${OPENSSH_SERVER_SYSTEM_PATH}" ]; then
+		rm -rf "${OPENSSH_SERVER_SYSTEM_PATH}"
+	fi
+
+	if [ -d "${OPENSSH_SERVER_RUN_PATH}" ]; then
+		rm -rf "${OPENSSH_SERVER_RUN_PATH}"
+	fi
+}
+
+# 设置openssh端口号
+setOpensshPort()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} config!"
+
+	if [ ! -z ${OPENSSH_SERVER_PORT} ]; then
+		SSHD_PORT=${OPENSSH_SERVER_PORT}
+	else
+		while [ 1 ]; do
+			echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: Input The Sshd Port: "
+		
+			stty erase ^H
+			read userValue
+		
+			if [ -z "${userValue}" ]; then
+				echo -e "($(basename $0)): $$ \033[1;43;31mNOTICE\033[0m: Input Value Invalid!"
+			else
+				if [ "$(echo "${userValue}" | sed -E -e 's/^[[:digit:]]*/0/')" != "0" ]; then
+					echo -e "($(basename $0)): $$ \033[1;43;31mNOTICE\033[0m: ${userValue} Is Invalid!"
+				else
+					if [ ${userValue} -le 0 ] || [ ${userValue} -ge 65535 ]; then
+						echo -e "($(basename $0)): $$ \033[1;43;31mNOTICE\033[0m: ${userValue} Is Invalid!"
+					else
+						break
+					fi
+				fi
+			fi
+		done
+
+		SSHD_PORT=${userValue}
+	fi
+	
+	if [ -n "$(grep -E '^Port [[:digit:]]*$' "${OPENSSH_SERVER_SSHD_CONFIG}")" ]; then
+		sed -E -i 's/^(Port) [[:digit:]]*$/\1 '"${SSHD_PORT}"'/' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	elif [ -n "$(grep -E '^#Port [[:digit:]]*$' "${OPENSSH_SERVER_SSHD_CONFIG}")" ]; then
+		sed -E -i 's/^#(Port) [[:digit:]]*$/\1 '"${SSHD_PORT}"'/' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	else
+		echo -e "Port ${SSHD_PORT}" >> "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+}
+
+# 设置openssh配置
+setOpensshConfig()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} config!"
+
+	listenIpAddress="$(nvram get lan_ipaddr)"
+	
+	# 禁用S*sshd服务
+	if [ -e "${OPENSSH_SERVER_SSHD_SERVICE}" ]; then
+		mv -f "${OPENSSH_SERVER_SSHD_SERVICE}" "${OPENSSH_SERVER_SYSTEM_PATH}"
+	fi
+	
+	# 设置监听IP地址
+	if [ -z "$(awk '/#ListenAddress 0\.0\.0\.0/{getline a; print a}' "${OPENSSH_SERVER_SSHD_CONFIG}" | sed -n '/^ListenAddress '"${listenIpAddress}"'/p')" ]; then
+		sed -i '/^#ListenAddress 0\.0\.0\.0/ a\ListenAddress '"${listenIpAddress}"'' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+	
+	# 生成ssh密钥key
+	ssh-keygen -t rsa -N "" -f "${OPENSSH_SERVER_SSH_RSAKEY}"
+	
+	# 查找ssh_host_ecdsa_key注释
+	if [ -z "`sed -n '/^#.*HostKey .*ecdsa_key/p' ${OPENSSH_SERVER_SSHD_CONFIG}`" ]; then
+		sed -i '/^HostKey .*ecdsa_key$/s/^/#/' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+	
+	# 查找ssh_host_ed25519_key注释
+	if [ -z "`sed -n '/^#.*HostKey .*ed25519_key/p' ${OPENSSH_SERVER_SSHD_CONFIG}`" ]; then
+		sed -i '/^HostKey .*ed25519_key$/s/^/#/' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+	
+	# 查找PermitRootLogin管理员权限登录
+	# sed -n '/#PermitRootLogin/{N;p}' sshd_config | sed -n '/^PermitRootLogin yes/p'
+	
+	# 查找关键字的下一行, 匹配查找内容
+	if [ -z "$(awk '/#PermitRootLogin/{getline a; print a}' "${OPENSSH_SERVER_SSHD_CONFIG}" | sed -n '/^PermitRootLogin yes/p')" ]; then
+		sed -i '/^#PermitRootLogin / a\PermitRootLogin yes' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+	
+	#
+	if [ -z "$(awk '/#PidFile /{getline a; print a}' "${OPENSSH_SERVER_SSHD_CONFIG}" | sed -n '/^PidFile \/var\/run\/sshd.pid/p')" ]; then
+		sed -i '/^#PidFile / a\PidFile \/var\/run\/sshd.pid' "${OPENSSH_SERVER_SSHD_CONFIG}"
+	fi
+}
+
+# 设置Openssh监控
+setOpensshMonit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${OPENSSH_SERVER_PRIVATE_ROOT}/etc/openssh_server" ]; then
+			cp -f "${OPENSSH_SERVER_PRIVATE_ROOT}/etc/openssh_server" "${ENTWARE_MONITD_PATH}/openssh_server.on"
+			chmod 600 "${ENTWARE_MONITD_PATH}/openssh_server.on"
+		fi
+
+		if [ -e "${OPENSSH_SERVER_PRIVATE_ROOT}/bin/openssh_server_control" ]; then
+			cp -f "${OPENSSH_SERVER_PRIVATE_ROOT}/bin/openssh_server_control" "${OPENSSH_SERVER_RUN_PATH}"
+			chmod 775 "${OPENSSH_SERVER_RUN_PATH}/openssh_server_control"
+		fi
+
+		# 启动OPENSSH_SERVER服务
+		waitForMonitSrvProcess 1 "OPENSSH_SERVER"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭OPENSSH_SERVER服务
+		waitForMonitSrvProcess 0 "OPENSSH_SERVER"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		# 等待sshd进程退出
+		while [ -n "$(pidof sshd)" ]; do
+			kill $(pidof sshd)
+		done
+
+		if [ -e "${ENTWARE_MONITD_PATH}/openssh_server.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/openssh_server.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "OPENSSH_SERVER"
+	fi
+}
+
+# 设置openssh_server环境
+setOpensshEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置Openssh监控
+		setOpensshMonit $1
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${OPENSSH_SERVER_RUN_PATH}" ]; then
+			mkdir "${OPENSSH_SERVER_RUN_PATH}"
+		fi
+
+		if [ ! -d "${OPENSSH_SERVER_SYSTEM_PATH}" ]; then
+			mkdir "${OPENSSH_SERVER_SYSTEM_PATH}"
+		fi
+
+		if [ -e "${OPENSSH_SERVER_SSHD_CONFIG}" ]; then
+			cp  -f "${OPENSSH_SERVER_SSHD_CONFIG}"	"${OPENSSH_SERVER_SYSTEM_PATH}/sshd_config.bak"
+		fi
+
+		# 设置openssh端口号
+		setOpensshPort
+
+		# 设置openssh配置
+		setOpensshConfig
+
+		# 设置Openssh监控
+		setOpensshMonit $1
+	fi
+}
+
+# 初始化openssh_server环境
+initOpensshEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	# 安装openssh_server环境
+	installOpensshEnv $1
+	
+	# 设置openssh_server环境
+	setOpensshEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放openssh_server环境
+uninitOpensshEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	
+	# 设置openssh_server环境
+	setOpensshEnv $1
+
+	# 卸载openssh_server环境
+	unInstallOpensshEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION}  the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放openssh_server环境
+		uninitOpensshEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化openssh_server环境
+		initOpensshEnv $1
+		;;
+	*)
+		;;
+esac

@@ -1,0 +1,417 @@
+#!/bin/sh
+
+: "
+	install aria2
+"
+
+# aria2服务
+SERVICE_MODULE_NAME="aria2"
+
+# aria2脚本根目录
+ARIA2_PRIVATE_ROOT="${EXPAND_ADDONS _PATH}/aria2"
+
+# aria2脚本usr目录
+ARIA2_PRIVATE_USR="${ARIA2_PRIVATE_ROOT}/usr"
+
+# aria2安装路径
+ARIA2_SYSTEM_PATH="${ROUTER_USR_PATH}/aria2"
+
+# aria2脚本运行路径
+ARIA2_RUN_PATH="${ENTWARE_RUN_PATH}/aria2"
+
+# aria2下载路径
+ARIA2_DOWNLOADS_PATH="/opt/home/root/downloads"
+
+# S81aria2启动文件
+S81ARIA2_SYSTEM_FILE="/opt/etc/init.d/S81aria2"
+
+# aria2配置文件
+ARIA2CFG_SYSTEM_FILE="/opt/etc/aria2.conf"
+
+# aria2的pid文件
+ARIA2_PID_FILE="/var/run/${SERVICE_MODULE_NAME}.pid"
+
+# AriaNg版本地址
+ARIANG_URL="https://api.github.com/repos/mayswind/AriaNg/releases/latest"
+
+# 下载AriaNg包
+downloadPackages()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: downloading the ariang file!"
+
+	if [ -z "$(which curl)" ]; then
+		return
+	fi
+
+	# 获取AriaNg版本号
+	ariaNg_version="$(curl -s "${ARIANG_URL}" | sed -E -n -e 's/^[[:space:]]*\"tag_name\":[[:space:]]*\"(.*)\".*/\1/p')"
+	if [ -z "${lastVersion}" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: get ariang version number failed!"
+		return
+	fi
+
+	# 文件名称
+	ariaNg_file="AriaNg-${lastVersion}-AllInOne.zip"
+
+	# 下载链接
+	ariaNg_link="https://github.com/mayswind/AriaNg/releases/download/${ariaNg_version}/${ariaNg_file}"
+
+	# 判断文件存在
+	if [ -e "${ARIA2_PRIVATE_USR}/${ariaNg_file}" ]; then
+		rm -rf "${ARIA2_PRIVATE_USR}/${ariaNg_file}"
+	fi
+}
+
+# 安装AriaNg环境
+installAriaNgEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ariang environment!"
+	
+	# 检索文件列表
+	fileList=$(find "${ARIA2_PRIVATE_USR}" -name "AriaNg*.zip" | sort -s | tail -n 1)
+		
+	# 获取文件压缩包
+	if [ -n "${fileList}" ]; then
+		filePath="${fileList}"
+	else
+		downloadPackages $filePath	
+	fi
+
+	# 创建AriaNg站点目录
+	if [ -d "${USR_WEBSITE_PATH}/ariaNg" ]; then
+		rm -rf "${USR_WEBSITE_PATH}/ariaNg"
+	fi
+
+	mkdir "${USR_WEBSITE_PATH}/ariaNg"
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: extracting the ariang file!"
+
+	# 解压安装包
+	unzip "${filePath}" -d "${USR_WEBSITE_PATH}/ariaNg" >/dev/null 2>&1
+}
+
+# 安装aria2环境
+installAria2Env()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+
+	if [ ! -d "${ARIA2_SYSTEM_PATH}" ]; then
+		mkdir "${ARIA2_SYSTEM_PATH}"
+	fi
+
+	if [ ! -d "${ARIA2_PRIVATE_USR}" ]; then
+		mkdir "${ARIA2_PRIVATE_USR}"
+	fi
+	
+	# 安装Aria2服务
+	installPackages $1 "aria2"
+
+	# 安装AriaNg环境
+	installAriaNgEnv
+}
+
+# 卸载aria2环境
+unInstallAria2Env()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 卸载aria2软件包
+	installPackages $1 "aria2"
+	
+	result=$(find "/opt/etc/init.d" -name "S*aria2")
+	if [ -n "$result" ]; then
+		rm -rf "$result"
+	fi
+
+	if [ -d "${USR_WEBSITE_PATH}/ariaNg" ]; then
+		rm -rf "${USR_WEBSITE_PATH}/ariaNg"
+	fi
+
+	if [ -d "${ARIA2_SYSTEM_PATH}" ]; then
+		rm -rf "${ARIA2_SYSTEM_PATH}"
+	fi
+
+	if [ -d "${ARIA2_RUN_PATH}" ]; then
+		rm -rf "${ARIA2_RUN_PATH}"
+	fi
+}
+
+# 设置S81Aria2脚本
+setS81Aria2()
+{
+    if [ ! -e "${S81ARIA2_SYSTEM_FILE}" ]; then
+		return
+	fi
+
+    # S81aria2备份
+	if [ -e "${ARIA2_SYSTEM_PATH}/etc/S81aria2.bak" ]; then
+		rm -rf "${ARIA2_SYSTEM_PATH}/etc/S81aria2.bak"
+	fi
+	
+	cp -f "${S81ARIA2_SYSTEM_FILE}" "${ARIA2_SYSTEM_PATH}/etc/S81aria2.bak"
+
+    # S81aria2配置
+    if [ -z "`sed -n '/^# *ENABLED/p' ${S81ARIA2_SYSTEM_FILE}`" ]; then
+		sed -i '/^ENABLED/s/^/#/' "${S81ARIA2_SYSTEM_FILE}"	#关键字前加注释#
+	fi
+
+    if [ -z "`sed -n '/^ENABLED/p' ${S81ARIA2_SYSTEM_FILE}`" ]; then
+		sed -i '/^#ENABLED/ a\ENABLED=no' "${S81ARIA2_SYSTEM_FILE}"
+	fi
+
+    if [ -z "`sed -n '/^# *\[/p' ${S81ARIA2_SYSTEM_FILE}`" ]; then
+        sed -i '/^\[/s/^/#/' "${S81ARIA2_SYSTEM_FILE}"
+    fi
+}
+
+# 设置Aria2Conf脚本
+setAria2Conf()
+{
+    if [ ! -e "${ARIA2CFG_SYSTEM_FILE}" ]; then
+		return
+	fi
+
+    # Aria2Conf脚本备份
+	if [ -e "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" ]; then
+		rm -rf "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+	fi
+
+    cp -f "${ARIA2CFG_SYSTEM_FILE}" "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+
+	# aria2配置文件
+	# 设置文件下载目录
+	downloads=`sed -n '/^.*dir=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" | awk -F '[=]' '{print $2}'`
+	if [ -n "${downloads}" ]; then
+		if [ "${downloads}" != "${ARIA2_DOWNLOADS_PATH}" ]; then
+			sed -i '/^.*dir=/s#/.*$#'"${ARIA2_DOWNLOADS_PATH}"'#' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+	fi
+
+	# 会话文件中读取下载任务
+	inputfiles=`sed -n '/^.*input-file=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" | awk -F '[=]' '{print $2}'`
+	if [ -n "${inputfiles}" ]; then
+		if [ "${inputfiles}" != "${ARIA2_SYSTEM_PATH}/var/session.dat" ]; then
+			sed -i '/^.*input-file=/s#/.*$#'"${ARIA2_SYSTEM_PATH}/var/session.dat"'#' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+	fi
+
+	# 日志文件
+	log=`sed -n '/^.*log=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" | awk -F '[=]' '{print $2}'`
+	if [ -n "${log}" ]; then
+		if [ "${log}" != "${ARIA2_SYSTEM_PATH}/var/aria2.log" ]; then
+			sed -i '/^.*log=/s#/.*$#'"${ARIA2_SYSTEM_PATH}/var/aria2.log"'#' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+
+		if [ -z "`sed -n '/^#.*log=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"`" ]; then
+			sed -i '/^.*log=/s/^/#/' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+	fi
+
+	#
+	dht_file_path=`sed -n '/^.*dht-file-path=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" | awk -F '[=]' '{print $2}'`
+	if [ -n "${dht_file_path}" ]; then
+		if [ "${dht_file_path}" != "${ARIA2_SYSTEM_PATH}/var/dht.dat" ]; then
+			sed -i '/^.*dht-file-path=/s#/.*$#'"${ARIA2_SYSTEM_PATH}/var/dht.dat"'#' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+	fi
+
+	#
+	dht_file_path6=`sed -n '/^.*dht-file-path6=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" | awk -F '[=]' '{print $2}'`
+	if [ -n "${dht_file_path6}" ]; then
+		if [ "${dht_file_path6}" != "${ARIA2_SYSTEM_PATH}/var/dht6.dat" ]; then
+			sed -i '/^.*dht-file-path6=/s#/.*$#'"${ARIA2_SYSTEM_PATH}/var/dht6.dat"'#' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+	fi
+
+	# 设置的RPC授权令牌
+	if [ -z "`sed -n '/^#.*rpc-secret=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"`" ]; then
+		sed -i '/^rpc-secret=/s/^/#/' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+	fi
+
+	# Aria2退出时保存错误的、未完成的下载任务到会话文件
+	save_session=`sed -n '/^.*save-session=/p' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf" | awk -F '[=]' '{print $2}'`
+	if [ -n "${save_session}" ]; then
+		if [ "${save_session}" != "${ARIA2_SYSTEM_PATH}/var/session.dat" ]; then
+			sed -i '/^.*save-session=/s#/.*$#'"${ARIA2_SYSTEM_PATH}/var/session.dat"'#' "${ARIA2_SYSTEM_PATH}/etc/aria2.conf"
+		fi
+	fi
+}
+
+# 设置Aria2配置
+setAria2Cfg()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the aria2 config!"
+
+	# 设置S81Aria2脚本
+	setS81Aria2
+
+	# 设置Aria2Conf脚本
+    setAria2Conf
+
+	# etc目录链接
+	if [ ! -e "${ARIA2_RUN_PATH}/etc" ]; then
+		ln -s "${ARIA2_SYSTEM_PATH}/etc" "${ARIA2_RUN_PATH}/etc"
+	fi
+
+	# var目录链接
+	if [ ! -e "${ARIA2_RUN_PATH}/var" ]; then
+		ln -s "${ARIA2_SYSTEM_PATH}/var" "${ARIA2_RUN_PATH}/var"
+	fi
+}
+
+# 设置AriaNg配置
+setAriaNgCfg()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ariang config!"
+
+	# 设置网站存放站点
+	echo -e "server.document-root = \"${USR_WEBSITE_PATH}/ariaNg\"" > "${ARIA2_SYSTEM_PATH}/etc/ariaNg_lighttpd.conf"
+
+	# 设置网站访问的名字
+	indexName="( \"index.php\", \"index.htm\", \"index.html\", \"default.htm\" )"
+	echo -e "index-file.names = ${indexName}" >> "${ARIA2_SYSTEM_PATH}/etc/ariaNg_lighttpd.conf"
+
+	# 设置访问端口号
+	echo -e "server.port = ${ARIANG_HTTP_PORT}" >> "${ARIA2_SYSTEM_PATH}/etc/ariaNg_lighttpd.conf"
+
+	# AriaNg的id文件
+	ariaNgPid="\"/var/run/ariaNg.pid\""
+	echo -e "server.pid-file = ${ariaNgPid}" >> "${ARIA2_SYSTEM_PATH}/etc/ariaNg_lighttpd.conf"
+
+	# 指定mime类型映射列表
+	mimeType="( \".html\" => \"text/html\", \".txt\" => \"text/plain\", \".jpg\" => \"image/jpeg\", \".png\" => \"image/png\")"
+	echo -e "mimetype.assign = ${mimeType}" >> "${ARIA2_SYSTEM_PATH}/etc/ariaNg_lighttpd.conf"
+}
+
+# 设置Aria2监控
+setAria2Monit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the aria2 monit!"
+
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${ARIA2_PRIVATE_ROOT}/etc/aria2" ]; then
+			cp -f "${ARIA2_PRIVATE_ROOT}/etc/aria2" "${ENTWARE_MONITD_PATH}/aria2.on"
+			chmod 600 "${ENTWARE_MONITD_PATH}/aria2.on"
+		fi
+
+		if [ -e "${ARIA2_PRIVATE_ROOT}/bin/aria2_control" ]; then
+			cp -f "${ARIA2_PRIVATE_ROOT}/bin/aria2_control" "${ARIA2_RUN_PATH}"
+			chmod 775 "${ARIA2_RUN_PATH}/aria2_control"
+		fi
+
+		# 启动ARIA2服务
+		waitForMonitSrvProcess 1 "ARIA2"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭ARIA2服务
+		waitForMonitSrvProcess 0 "ARIA2"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		# 等待aria2进程退出
+		if [ -e "${ARIA2_PID_FILE}" ]; then
+			for PID in $(cat "${ARIA2_PID_FILE}"); do
+				kill $PID
+			done
+		fi
+
+		if [ -e "${ENTWARE_MONITD_PATH}/aria2.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/aria2.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "ARIA2"
+	fi
+}
+
+# 设置aria2环境
+setAria2Env()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+
+    if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置Aria2监控
+        setAria2Monit $1
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${ARIA2_RUN_PATH}" ]; then
+			mkdir "${ARIA2_RUN_PATH}"
+		fi
+
+		if [ ! -d "${ARIA2_SYSTEM_PATH}/etc" ]; then
+			mkdir "${ARIA2_SYSTEM_PATH}/etc"
+		fi
+
+		if [ ! -d "${ARIA2_SYSTEM_PATH}/var" ]; then
+			mkdir "${ARIA2_SYSTEM_PATH}/var"
+		fi
+
+		# 设置Aria2配置
+		setAria2Cfg
+
+		# 设置AriaNg配置
+		setAriaNgCfg
+
+		# 设置Aria2监控
+        setAria2Monit $1
+	fi
+}
+
+# 初始化aria2环境
+initAria2Env()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	if [ -n "$(pidof aria2c)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} service is running!"
+		return
+	fi
+
+    # 安装aria2环境
+	installAria2Env $1
+
+    # 设置aria2环境
+	setAria2Env $1
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放aria2环境
+uninitAria2Env()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] || [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	
+	# 设置aria2环境
+	setAria2Env $1
+	
+	# 卸载aria2环境
+	unInstallAria2Env $1
+	
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放aria2环境
+		uninitAria2Env $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化aria2环境
+		initAria2Env $1
+		;;
+	*)
+		;;
+esac

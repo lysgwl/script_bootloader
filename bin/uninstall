@@ -1,0 +1,76 @@
+#!/bin/sh
+
+: "	
+	uninstall卸载程序
+"
+
+# 当前路径
+SCRIPT_CUR_PATH=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+
+# 环境变量
+. ${SCRIPT_CUR_PATH}/options
+
+# 工具函数
+. ${SCRIPT_CUR_PATH}/feature
+
+# 初始化函数
+. ${SCRIPT_CUR_PATH}/init ${SCRIPT_UNINIT_FLAG} "${SCRIPT_CUR_PATH}"
+
+#
+echo -e "($(basename $0)): $$ *---- ${SERVICE_FUNCTION} ${SERVICE_NAME} ON ${ROUTER_MODEL} ----*"
+
+#
+echo -e "\033[1;45;37m############### Stage 1: unInstall Addons ###############\033[0m"
+
+# 卸载应用插件
+if [ -e "${SCRIPT_BIN_PATH}/install_addons" ]; then
+	. ${SCRIPT_BIN_PATH}/install_addons ${SCRIPT_UNINIT_FLAG}
+fi
+
+#
+echo -e "\033[1;45;37m##### Stage 2: unInstall Essential Component #####\033[0m"
+
+# 卸载系统时区
+. ${BASIC_ADDONS_PATH}/timezone/bin/timezone_configure ${SCRIPT_UNINIT_FLAG}
+
+# 卸载monit环境
+. ${BASIC_ADDONS_PATH}/monit/bin/monit_configure ${SCRIPT_UNINIT_FLAG}
+
+# 卸载依赖环境
+. ${BASIC_ADDONS_PATH}/dependency/bin/dependency_configure ${SCRIPT_UNINIT_FLAG}
+
+# 卸载entware环境
+. ${BASIC_ADDONS_PATH}/entware/bin/entware_configure ${SCRIPT_UNINIT_FLAG}
+
+# 删除swap交换分区
+. ${BASIC_ADDONS_PATH}/swap/bin/swap_configure ${SCRIPT_UNINIT_FLAG}
+
+# 删除用户目录
+if [ -d  "${ROUTER_USR_PATH}" ]; then
+	rm -rf "${ROUTER_USR_PATH}"
+fi
+
+echo -e "\033[1;45;37m##### Stage 3: Clean Router Config #####\033[0m"
+
+# 清空usb挂载
+nvram unset script_usbmount
+
+# 清空usb卸载
+nvram unset script_usbumount
+
+#
+nvram unset usb_ext_opt
+
+# 清空用户名
+nvram unset sbl_username
+
+# 清空用户密码
+nvram unset sbl_password
+
+# 提交设置
+nvram commit
+
+#
+sync
+
+echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} ${SERVICE_NAME}"

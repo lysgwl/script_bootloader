@@ -1,0 +1,90 @@
+#!/bin/sh
+
+: "
+	aria2 control
+"
+
+# 获取当前脚本路径
+basePath=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+#echo "${basePath}" >> /mnt/sda1/s1.log
+
+# 开启aria2服务
+openAria2Service()
+{
+    echo -e "($(basename $0)): $$ *--------- enable aria2 service! ---------*"
+
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] || [ -z "$(opkg list-installed | grep aria2)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services aria2 not installed!"
+		return
+	fi
+
+    if [ ! -d "${basePath}/var" ] || [ ! -e "${basePath}/etc/aria2.conf" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: aria2 service cannot find configuration file!"
+		return
+	fi
+
+	# 创建会话文件
+	if [ ! -e "${basePath}/var/session.dat" ]; then
+		touch "${basePath}/var/session.dat"
+	fi
+
+	# 后台运行程序
+	/opt/bin/aria2c --conf-path="${basePath}/etc/aria2.conf" --daemon true
+
+	#
+	if [ -e "${basePath}/etc/ariaNg_lighttpd.conf" ]; then
+		lighttpd -f "${basePath}/etc/ariaNg_lighttpd.conf"
+	fi
+	
+	# aria2 id写入文件
+	echo "$(pidof aria2c)" > "/var/run/aria2.pid"
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable aria2 service!"
+}
+
+# 关闭aria2服务
+closeAria2Service()
+{
+    echo -e "($(basename $0)): $$ *--------- disable aria2 service! ---------*"
+
+	# 检测AriaNg进程文件
+	if [ -e "/var/run/ariaNg.pid" ]; then
+		echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the service process of ariaNg!"
+
+		for PID in $(cat "/var/run/ariaNg.pid"); do
+			kill ${PID}
+		done
+
+		rm -rf "/var/run/ariaNg.pid"
+	fi
+
+	# 检测Aria2进程文件
+	if [ -e "/var/run/aria2.pid" ]; then
+		echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the service process of aria2!"
+		
+		# 关闭Aria2进程
+		for PID in $(cat "/var/run/aria2.pid"); do
+			kill ${PID}
+		done
+		
+		rm -rf "/var/run/aria2.pid"
+	fi
+
+	# 关闭Aria2进程
+	for PID in $(pidof aria2); do
+		kill $PID
+	done
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: disable aria2 service!"
+}
+
+case $1 in
+	0)
+        # 关闭aria2服务
+		closeAria2Service
+		;;
+	1)
+        # 开启aria2服务
+		openAria2Service
+		;;
+esac

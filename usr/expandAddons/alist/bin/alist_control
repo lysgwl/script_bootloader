@@ -1,0 +1,72 @@
+#!/bin/sh
+
+: "
+	alist control
+"
+
+# 获取当前脚本路径
+basePath=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+
+# 开启Alist服务
+openAlistService()
+{
+	echo -e "($(basename $0)): $$ *--------- enable alist service! ---------*"
+	
+	if [ ! -e "${basePath}/bin/alist" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: enable alist service!"
+		return
+	fi
+	
+	if [ -n "$(pidof alist)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: alist service is running!"
+		return
+	fi
+	
+	# 后台运行alist
+	if [ -e "${basePath}/etc/config.json" ]; then
+		"${basePath}/bin/alist" server --data "${basePath}/etc" &> /dev/null &
+	else
+		"${basePath}/bin/alist" start
+	fi
+	
+	# alist id写入文件
+	echo "$(pidof alist)" > "/var/run/alist.pid"
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable alist service!"
+}
+
+# 关闭Alist服务
+closeAlistService()
+{
+	echo -e "($(basename $0)): $$ *--------- disable alist service! ---------*"
+	
+	# 检测alist进程文件
+	if [ -e "/var/run/alist.pid" ]; then
+		echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the service process of Alist!"
+		
+		# 关闭alist进程
+		for PID in $(cat "/var/run/alist.pid"); do
+			kill $PID
+		done
+		
+		rm -rf "/var/run/alist.pid"
+	fi
+
+	# 关闭alist进程
+	for PID in $(pidof alist); do
+		kill $PID
+	done
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: disable alist service!"
+}
+
+case $1 in
+	0)
+        # 关闭Alist服务
+		closeAlistService
+		;;
+	1)
+        # 开启Alist服务
+		openAlistService
+		;;
+esac

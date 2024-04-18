@@ -1,0 +1,90 @@
+#!/bin/sh
+
+: "
+	shellinabox control
+"
+
+# 获取当前脚本路径
+basePath=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+
+# 开启shellinabox服务
+openShellinaboxService()
+{
+	echo -e "($(basename $0)): $$ *--------- enable shellinabox service! ---------*"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] || [ -z "$(opkg list-installed | grep shellinabox)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services shellinabox not installed!"
+		return
+	fi
+	
+	if [ -e "/var/run/shellinaboxd.pid" ] && [ -n "$(pidof shellinaboxd)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services shellinabox is running!"
+		return
+	fi
+	
+	# 路由器登录用户名
+	username="$(nvram get sbl_username)"
+	if [ -z "${username}" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ssh login username cannot is empty!"
+		return
+	fi
+	
+	# 获取配置端口号
+	if [ -e "${basePath}/etc/shellinabox.conf" ]; then
+		port=`sed -n '/^.*port=/p' "${basePath}/etc/shellinabox.conf" | awk -F '[=]' '{print $2}'`
+	fi
+	
+	# 后台运行程序
+	if [ ! -d "${basePath}/style" ] || [ ! -e "${basePath}/style/white-on-black.css" ] || [ -z "${port}"]; then
+		shellinaboxd --service=/:LOGIN -b --disable-ssl -u "${username}" --port="${port}"
+	else
+		css_args="--css=${basePath}/style/white-on-black.css"
+		shellinaboxd "${css_args}" --service=/:LOGIN -b --disable-ssl -u "${username}" --port="${port}"
+	fi
+	
+	# 判断程序运行成功
+	if [ $? != 0 ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services shellinabox to running!"
+		return
+	fi
+	
+	# shellinaboxd gid写入文件
+	echo "$(pidof shellinaboxd)" > "/var/run/shellinaboxd.pid"
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable shellinabox service!"
+}
+
+# 关闭shellinabox服务
+closeShellinaboxService()
+{
+	echo -e "($(basename $0)): $$ *--------- disable shellinabox service! ---------*"
+	
+	# 检测关闭shellinabox进程
+	if [ -e "/var/run/shellinaboxd.pid" ]; then
+		echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the service process of shellinaboxd!"
+		
+		for PID in $(cat "/var/run/shellinaboxd.pid"); do
+			kill ${PID}
+		done
+		
+		rm -rf "/var/run/shellinaboxd.pid"
+	fi
+
+	# 关闭shellinabox进程
+	for PID in $(pidof shellinaboxd); do
+		kill $PID
+	done
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: disable shellinabox service!"
+}
+
+case $1 in
+	0)
+        # 关闭shellinabox服务
+		closeShellinaboxService
+		;;
+	1)
+        # 开启shellinabox服务
+		openShellinaboxService
+		;;
+esac

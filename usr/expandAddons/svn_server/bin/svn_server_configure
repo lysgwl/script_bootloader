@@ -1,0 +1,103 @@
+#!/bin/sh
+
+: "
+	install svn_server
+"
+
+# svn_server服务
+SERVICE_MODULE_NAME="svn_server"
+
+# svn_server脚本根目录
+SVN_SERVER_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/svn_server"
+
+# svn_server脚本usr目录
+SVN_SERVER_PRIVATE_USR="${SVN_SERVER_PRIVATE_ROOT}/usr"
+
+# svn_server安装路径
+SVN_SERVER_SYSTEM_PATH="${ROUTER_USR_PATH}/svn_server"
+
+# svn_server脚本运行路径
+SVN_SERVER_RUN_PATH="${ENTWARE_RUN_PATH}/svn_server"
+
+# 安装svn_server环境
+installSvnServerEnv()
+{
+    return
+}
+
+# 卸载svn_server环境
+unInstallSvnServerEnv()
+{
+    return
+}
+
+# 设置svn_server监控
+setSvnServerMonit()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+    #if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+    #elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+    #fi
+}
+
+# 设置svn_server环境
+setSvnServerEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+    
+    #if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+    #elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+    #fi
+}
+
+# 初始化svn_server环境
+initSvnServerEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+    
+    if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+    # 安装svn_server环境
+    installSvnServerEnv $1
+
+    # 设置svn_server环境
+    setSvnServerEnv $1
+
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放svn_server环境
+uninitSvnServerEnv()
+{
+    echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+    
+    if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+    # 设置svn_server环境
+    setSvnServerEnv $1
+
+    # 卸载svn_server环境
+    unInstallSvnServerEnv $1
+
+    echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放alist环境
+		uninitSvnServerEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化alist环境
+		initSvnServerEnv $1
+		;;
+	*)
+		;;
+esac

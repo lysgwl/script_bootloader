@@ -1,0 +1,99 @@
+#!/bin/sh
+
+: "	
+	install安装程序
+"
+
+# 当前路径
+SCRIPT_CUR_PATH=$(cd `dirname "$0}"` >/dev/null 2>&1; pwd)
+
+# 环境变量
+. ${SCRIPT_CUR_PATH}/options
+
+# 功能函数
+. ${SCRIPT_CUR_PATH}/feature
+
+# 初始化函数
+. ${SCRIPT_CUR_PATH}/init ${SCRIPT_INIT_FLAG} "${SCRIPT_CUR_PATH}"
+
+#
+echo -e "($(basename $0)): $$ *----- ${SERVICE_FUNCTION} ${SERVICE_NAME} ON ${ROUTER_MODEL} -----*"
+
+#
+echo -e "\033[1;45;37m##### Stage 1: Set Boot Parameters #####\033[0m"
+
+# 判断jffs脚本
+if [ ! -e "${SCRIPT_BIN_PATH}/usb_jffs_script" ]; then
+	# USB挂载脚本
+	USB_MOUNT_SCRIPT="${SCRIPT_BIN_PATH}/usb_mount_script"	
+else
+	if [ ! -e "${ROUTER_JFFS_PATH}/usb_jffs_script" ]; then
+		cp -rf "${SCRIPT_BIN_PATH}/usb_jffs_script" "${ROUTER_JFFS_PATH}"
+	else
+		# cmp diff md5sum comm
+		cmp -s "${SCRIPT_BIN_PATH}/usb_jffs_script" "${ROUTER_JFFS_PATH}/usb_jffs_script"
+		
+		if [ $? != 0 ]; then
+			cp -rf "${SCRIPT_BIN_PATH}/usb_jffs_script" "${ROUTER_JFFS_PATH}"
+		fi
+	fi
+	
+	# USB挂载脚本
+	USB_MOUNT_SCRIPT="${ROUTER_JFFS_PATH}/usb_jffs_script"
+fi
+
+# 挂载USB自启动脚本
+if [ ! -e ${USB_MOUNT_SCRIPT} ] || [ ! -e ${USB_UNMOUNT_SCRIPT} ]; then
+	echo -e "($(basename $0)): $$ \033[1;43;31mFAILURE\033[0m: cannot find the mount script!"
+	exit 1
+else
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: set router the mount script!"
+
+	# 设置usb挂载
+	nvram set script_usbmount="${USB_MOUNT_SCRIPT} ${SCRIPT_INIT_FLAG}"
+	
+	# 设置usb卸载
+	nvram set script_usbumount="${USB_MOUNT_SCRIPT} ${SCRIPT_UNINIT_FLAG}"
+	
+	# 提交设置
+	nvram commit
+	
+	if [ ${?} -eq 0 ]; then
+        echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: Stage 1"
+    else
+        echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: Stage 1"
+        exit 1
+    fi
+fi
+
+#
+echo -e "\033[1;45;37m##### Stage 2: Install Essential Component #####\033[0m"
+
+# 设置swap交换分区
+. ${BASIC_ADDONS_PATH}/swap/bin/swap_configure ${SCRIPT_INIT_FLAG}
+
+# 设置entware环境
+. ${BASIC_ADDONS_PATH}/entware/bin/entware_configure ${SCRIPT_INIT_FLAG}
+
+# 设置系统时区
+. ${BASIC_ADDONS_PATH}/timezone/bin/timezone_configure ${SCRIPT_INIT_FLAG}
+
+# 设置monit环境
+. ${BASIC_ADDONS_PATH}/monit/bin/monit_configure ${SCRIPT_INIT_FLAG}
+
+# 设置依赖环境
+. ${BASIC_ADDONS_PATH}/dependency/bin/dependency_configure ${SCRIPT_INIT_FLAG}
+
+#
+echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: Stage 2"
+
+#
+echo -e "\033[1;45;37m##### Stage 3: Install Addons #####\033[0m"
+
+# 安装应用插件
+if [ ! -e "${SCRIPT_BIN_PATH}/install_addons" ]; then
+	echo -e "($(basename $0)): $$ \033[1;43;31mFAILURE\033[0m: cannot find the addons script!"
+else
+	# 安装插件
+	. ${SCRIPT_BIN_PATH}/install_addons ${SCRIPT_INIT_FLAG}
+fi

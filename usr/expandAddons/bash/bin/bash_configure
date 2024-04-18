@@ -1,0 +1,159 @@
+#!/bin/sh
+
+: "
+	install bash
+"
+
+# bash服务
+SERVICE_MODULE_NAME="bash"
+
+# bash脚本根目录
+BASH_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/bash"
+
+# bash安装路径
+BASH_SYSTEM_PATH="${ROUTER_USR_PATH}/bash"
+
+# bash脚本运行路径
+BASH_RUN_PATH="${ENTWARE_RUN_PATH}/bash"
+
+# bash配置文件
+BASH_ENTWARE_FILE="${ENTWARE_PROFILED_PATH}/bash.sh"
+
+# 安装bash环境
+installBashEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 安装软件包
+	installPackages $1 "bash"
+}
+
+# 卸载bash环境
+unInstallBashEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 安装软件包
+	installPackages $1 "bash"
+
+	if [ -e "${BASH_ENTWARE_FILE}" ]; then
+		rm -rf "${BASH_ENTWARE_FILE}"
+	fi
+
+	if [ -d "${BASH_RUN_PATH}" ]; then
+		rm -rf "${BASH_RUN_PATH}"
+	fi
+}
+
+# 设置bash监控
+setBashMonit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${BASH_PRIVATE_ROOT}/etc/bash" ]; then
+			cp -f "${BASH_PRIVATE_ROOT}/etc/bash" "${ENTWARE_MONITD_PATH}/bash.on"
+			chmod 600 "${ENTWARE_MONITD_PATH}/bash.on"
+		fi
+
+		if [ -e "${BASH_PRIVATE_ROOT}/bin/bash_control" ]; then
+			cp -f "${BASH_PRIVATE_ROOT}/bin/bash_control" "${BASH_RUN_PATH}"
+			chmod 775 "${BASH_RUN_PATH}/bash_control"
+		fi
+
+		# 启动BASH服务
+		waitForMonitSrvProcess 1 "BASH"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭BASH服务
+		waitForMonitSrvProcess 0 "BASH"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		if [ -e "${ENTWARE_MONITD_PATH}/bash.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/bash.on"
+		fi
+
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "BASH"
+	fi
+}
+
+# 设置bash环境
+setBashEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置bash监控
+		setBashMonit $1	
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${BASH_RUN_PATH}" ]; then
+			mkdir "${BASH_RUN_PATH}"
+		fi
+
+		# 配置bash
+		if [ ! -e "${BASH_ENTWARE_FILE}" ]; then
+			echo -e "export PS1='\\u@\\h:\\w\\$ '" > "${BASH_ENTWARE_FILE}"
+		fi
+
+		# 设置bash监控
+		setBashMonit $1
+	fi
+}
+
+# 初始化bash环境
+initBashEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	# 安装bash环境
+	installBashEnv $1
+	
+	# 设置bash环境
+	setBashEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"	
+}
+
+# 释放bash环境
+uninitBashEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then	#-a : and
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	
+	# 设置bash环境
+	setBashEnv $1
+	
+	# 卸载bash环境
+	unInstallBashEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放bash环境
+		uninitBashEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化bash环境
+		initBashEnv $1
+		;;
+	*)
+		;;
+esac

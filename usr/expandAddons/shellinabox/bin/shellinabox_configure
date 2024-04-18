@@ -1,0 +1,237 @@
+#!/bin/sh
+
+: "
+	install shellinabox
+"
+
+# shellinabox服务
+SERVICE_MODULE_NAME="shellinabox"
+
+# shellinabox脚本根目录
+SHELLINABOX_PRIVATE_ROOT="${EXPAND_ADDONS_PATH}/shellinabox"
+
+# shellinabox脚本usr目录
+SHELLINABOX_PRIVATE_USR="${SHELLINABOX_PRIVATE_ROOT}/usr"
+
+# shellinabox安装路径
+SHELLINABOX_SYSTEM_PATH="${ROUTER_USR_PATH}/shellinabox"
+
+# shellinabox脚本运行路径
+SHELLINABOX_RUN_PATH="${ENTWARE_RUN_PATH}/shellinabox"
+
+# shellinabox主题文件路径
+SHELLINABOX_STYLE_PATH="/opt/lib/shellinabox"
+
+# shellinabox的pid文件
+SHELLINABOX_PID_FILE="/var/run/${SERVICE_MODULE_NAME}.pid"
+
+# 安装shellinabox环境
+installShellinaboxEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	 
+	if [ ! -d "${SHELLINABOX_SYSTEM_PATH}" ]; then
+		mkdir "${SHELLINABOX_SYSTEM_PATH}"
+	fi
+
+	if [ ! -d "${SHELLINABOX_PRIVATE_USR}" ]; then
+		mkdir "${SHELLINABOX_PRIVATE_USR}"
+	fi
+	
+	# 安装shellinabox服务
+	installPackages $1 "shellinabox"
+}
+
+# 卸载shellinabox环境
+unInstallShellinaboxEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 卸载shellinabox服务
+	installPackages $1 "shellinabox"
+	
+	if [ -d "${SHELLINABOX_SYSTEM_PATH}" ]; then
+		rm -rf "${SHELLINABOX_SYSTEM_PATH}"
+	fi
+
+	if [ -d "${SHELLINABOX_RUN_PATH}" ]; then
+		rm -rf "${SHELLINABOX_RUN_PATH}"
+	fi
+}
+
+# 设置shellinabox配置
+setShellinaboxCfg()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: Setting the ${SERVICE_MODULE_NAME} config!"
+	
+	result=$(find "/opt/etc/init.d" -name "S*shellinabox*")
+	if [ -n "$result" ]; then
+		mv -f "$result" "${SHELLINABOX_SYSTEM_PATH}/etc"
+	fi
+	
+	#端口号配置
+	if [ -z "${SHELLINABOX_HTTP_PORT}" ]; then
+		SHELLINABOX_HTTP_PORT=4200
+	fi
+	
+	# shellinabox配置文件
+	if [ -e "${SHELLINABOX_SYSTEM_PATH}/etc/shellinabox.conf" ]; then
+		if [ -z "`sed -n '/^.*port=/p' ${SHELLINABOX_SYSTEM_PATH}/etc/shellinabox.conf`" ]; then
+			echo "port=${SHELLINABOX_HTTP_PORT}" >> "${SHELLINABOX_SYSTEM_PATH}/etc/shellinabox.conf"
+		else
+			sed -r -i "s/(^.*port=).*/\1"${SHELLINABOX_HTTP_PORT}"/" "${SHELLINABOX_SYSTEM_PATH}/etc/shellinabox.conf"
+		fi
+	else
+		echo "port=${SHELLINABOX_HTTP_PORT}" > "${SHELLINABOX_SYSTEM_PATH}/etc/shellinabox.conf"
+	fi
+	
+	# CSS风格文件
+	if [ -d "${SHELLINABOX_STYLE_PATH}" ]; then
+		if [ "$(ls -A ${SHELLINABOX_STYLE_PATH})" ]; then
+			mv -f ${SHELLINABOX_STYLE_PATH}/* "${SHELLINABOX_SYSTEM_PATH}/style"
+		fi
+		
+		rm -rf "${SHELLINABOX_STYLE_PATH}"
+	fi
+	
+	# etc目录链接
+	if [ ! -e "${SHELLINABOX_RUN_PATH}/etc" ]; then
+		ln -s "${SHELLINABOX_SYSTEM_PATH}/etc" "${SHELLINABOX_RUN_PATH}/etc"
+	fi
+	
+	# style目录链接
+	if [ ! -e "${SHELLINABOX_RUN_PATH}/style" ]; then
+		ln -s "${SHELLINABOX_SYSTEM_PATH}/style" "${SHELLINABOX_RUN_PATH}/style"
+	fi	
+}
+
+# 设置shellinabox监控
+setShellinaboxMonit()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} monit!"
+	
+	if [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ -e "${SHELLINABOX_PRIVATE_ROOT}/etc/shellinabox" ]; then
+			cp -f "${SHELLINABOX_PRIVATE_ROOT}/etc/shellinabox" "${ENTWARE_MONITD_PATH}/shellinabox.on"
+			chmod 600 "${ENTWARE_MONITD_PATH}/shellinabox.on"
+		fi
+
+		if [ -e "${SHELLINABOX_PRIVATE_ROOT}/bin/shellinabox_control" ]; then
+			cp -f "${SHELLINABOX_PRIVATE_ROOT}/bin/shellinabox_control" "${SHELLINABOX_RUN_PATH}"
+			chmod 775 "${SHELLINABOX_PRIVATE_ROOT}/bin/shellinabox_control"
+		fi
+
+		# 启动SHELLINABOX服务
+		waitForMonitSrvProcess 1 "SHELLINABOX"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services startup failed!"
+			exit 0
+		fi
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 关闭SHELLINABOX服务
+		waitForMonitSrvProcess 0 "SHELLINABOX"
+		if [ $? -eq 0 ]; then
+			echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} services shutdown failed!"
+			exit 0
+		fi
+
+		# 等待shellinaboxd进程退出
+		if [ -e "${SHELLINABOX_PID_FILE}" ]; then
+			for PID in $(cat "${SHELLINABOX_PID_FILE}"); do
+				kill $PID
+			done
+		fi
+
+		if [ -e "${ENTWARE_MONITD_PATH}/shellinabox.on" ]; then
+			rm -rf "${ENTWARE_MONITD_PATH}/shellinabox.on"
+		fi
+		
+		# 等待服务重载
+		waitForMonitSrvProcess 2 "SHELLINABOX"
+	fi
+}
+
+# 设置shellinabox环境
+setShellinaboxEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_UNINIT_FLAG} ]; then
+		# 设置shellinabox监控
+		setShellinaboxMonit $1
+	elif [ $1 == ${SCRIPT_INIT_FLAG} ]; then
+		if [ ! -d "${SHELLINABOX_RUN_PATH}" ]; then
+			mkdir "${SHELLINABOX_RUN_PATH}"
+		fi
+
+		if [ ! -d "${SHELLINABOX_SYSTEM_PATH}/etc" ]; then
+			mkdir "${SHELLINABOX_SYSTEM_PATH}/etc"
+		fi
+		
+		if [ ! -d "${SHELLINABOX_SYSTEM_PATH}/style" ]; then
+			mkdir "${SHELLINABOX_SYSTEM_PATH}/style"
+		fi
+
+		# 设置shellinabox配置
+		setShellinaboxCfg
+		
+		# 设置shellinabox监控
+		setShellinaboxMonit $1
+	fi
+}
+
+# 初始化shellinabox环境
+initShellinaboxEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+
+	if [ -n "$(pidof shellinaboxd)" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: ${SERVICE_MODULE_NAME} service is running!"
+		return
+	fi
+
+	# 安装shellinabox环境
+	installShellinaboxEnv $1
+	
+	# 设置shellinabox环境
+	setShellinaboxEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放shellinabox环境
+uninitShellinaboxEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	if [ "$(which opkg)" != "/opt/bin/opkg" ] && [ "$(which monit)" != "/opt/bin/monit" ]; then
+		echo -e "($(basename $0)): $$ \033[1;41;37mFAILURE\033[0m: system services not installed!"
+		return
+	fi
+	
+	# 设置shellinabox环境
+	setShellinaboxEnv $1
+	
+	# 卸载shellinabox环境
+	unInstallShellinaboxEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放shellinabox环境
+		uninitShellinaboxEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化shellinabox环境
+		initShellinaboxEnv $1
+		;;
+	*)
+		;;
+esac

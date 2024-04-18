@@ -1,0 +1,181 @@
+#!/bin/sh
+
+: "	
+	swap环境配置
+"
+
+# swap服务
+SERVICE_MODULE_NAME="swap"
+
+# swap脚本bin目录
+SWAP_PRIVATE_BIN="${BASIC_ADDONS_PATH}/swap/bin"
+
+# swap安装路径
+SWAP_SYSTEM_PATH="${ROUTER_USR_PATH}/swap"
+
+# swap内存交换文件
+SWAP_FILE_RUN="${SWAP_SYSTEM_PATH}/swapfile.var"
+
+# 检测swap文件
+checkSwapfile()
+{
+	#echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: checking the ${SERVICE_MODULE_NAME} file!"
+	
+	if [ ! -d "${SWAP_SYSTEM_PATH}" ]; then
+		mkdir "${SWAP_SYSTEM_PATH}"
+	fi
+	
+	if [ -e "${SWAP_FILE_RUN}" ]; then
+		return 1
+	fi
+	
+	return 0
+}
+
+# 创建swap文件
+createSwapfile()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: create the ${SERVICE_MODULE_NAME} file!"
+	
+	# 检测swap文件
+	checkSwapfile
+	
+	if [ $? -eq 0 ]; then
+		# 默认swap大小
+		swapSize=512
+		
+		if [ $# -gt 0 ]; then
+			swapSize=$1
+		else
+			while [ 1 ]; do
+				echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: \033[4mswap Size(MB)\033[0m: 256 | 512 | 1024 | 2048"
+				
+				echo -ne "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: input the value: "
+				
+				stty erase ^H
+				read swapSize
+				
+				case ${swapSize} in
+					256 | 512 | 1024 | 2048)
+						break
+						;;
+					*)
+						echo -e "($(basename $0)): $$ \033[1;43;31mNOTICE\033[0m: input ${swapSize} is invalid!"
+						;;
+				esac
+			done
+		fi
+		
+		BlockSize=1024
+		Count=$((${swapSize}*1024))
+		
+		dd if="/dev/zero" of="${SWAP_FILE_RUN}" bs=${BlockSize} count=${Count}
+		mkswap -L "ASUS_SWAP" "${SWAP_FILE_RUN}"
+		
+		chmod 600 "${SWAP_FILE_RUN}"
+	fi
+	
+	#echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: create the ${SERVICE_MODULE_NAME} file!"
+}
+
+# 关闭swap文件
+closeSwapfile()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the ${SERVICE_MODULE_NAME} file!"
+	
+	# swap文件检测
+	checkSwapfile
+	
+	if [ $? -gt 0 ]; then
+		rm -f "${SWAP_FILE_RUN}"
+	fi
+	
+	#echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: close the ${SERVICE_MODULE_NAME} file!"
+}
+
+# 开启swap服务
+openSwapService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: enable the ${SERVICE_MODULE_NAME} service!"
+	
+	# swap文件检测
+	checkSwapfile
+	
+	if [ $? -gt 0 ]; then
+		checkSwap=$(free | sed -E -n -e 's/^Swap:[[:space:]]+([[:digit:]]+).*/\1/p')
+		
+		if [ ${checkSwap} -eq 0 ]; then	#=
+			swapon "${SWAP_FILE_RUN}"
+		fi
+	fi
+	
+	#echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable the ${SERVICE_MODULE_NAME} service!"
+}
+
+# 关闭swap服务
+closeSwapService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the ${SERVICE_MODULE_NAME} service!"
+	
+	# swap文件检测
+	checkSwapfile
+	
+	if [ $? -gt 0 ]; then
+		checkSwap=$(free | sed -E -n -e 's/^Swap:[[:space:]]+([[:digit:]]+).*/\1/p')
+		
+		if [ ${checkSwap} -ne 0 ]; then	#!=
+			swapoff "${SWAP_FILE_RUN}"
+		fi	
+	fi
+	
+	#echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: close the ${SERVICE_MODULE_NAME} service!"
+}
+
+# 初始化swap文件
+initSwapfile()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# swap文件检测
+	createSwapfile
+	
+	# 打开swap服务
+	openSwapService
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+# 释放swap文件
+uninitSwapfile()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 关闭swap服务
+	closeSwapService
+	
+	# 关闭swap文件
+	closeSwapfile
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放swap文件
+		uninitSwapfile
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化swap文件
+		initSwapfile
+		;;
+	${SERVICE_OPEN_FLAG})
+		# 开启swap服务
+		openSwapService
+		;;
+	${SERVICE_CLOSE_FLAG})
+		# 关闭swap服务
+		closeSwapService
+		;;
+	*)
+		;;
+esac

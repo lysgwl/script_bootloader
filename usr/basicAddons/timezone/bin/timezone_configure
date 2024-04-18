@@ -1,0 +1,225 @@
+#!/bin/sh
+
+: "	
+	timezone环境配置
+"
+# TimeZone服务
+SERVICE_MODULE_NAME="timezone"
+
+# timezone脚本根目录
+TIMEZONE_PRIVATE_ROOT="${BASIC_ADDONS_PATH}/timezone"
+
+# timezone安装路径
+TIMEZONE_SYSTEM_PATH="${ROUTER_USR_PATH}/timezone"
+
+# zoneinfo安装路径
+ZONEINFO_SYSTEM_PATH="${ENTWARE_SYSTEM_PATH}/share/zoneinfo"
+
+# timezone脚本IP文件
+TIMEZONE_IPINFO_FILE="${SCRIPT_TMP_PATH}/IpInfo.xml"
+
+# timezone下载URL路径
+TIMEZONE_CHECKIP_URL="http://ip-api.com/xml/${WAN_REALIP_ADDR}"
+
+# 设置依赖包
+setZoneinfoPackages()
+{
+	# zoneinfo-africa
+	installPackages $1 "zoneinfo-africa"
+	
+	# zoneinfo-asia 
+	installPackages $1 "zoneinfo-asia"
+	
+	# zoneinfo-atlantic 
+	installPackages $1 "zoneinfo-atlantic"
+	
+	# zoneinfo-australia-nz 
+	installPackages $1 "zoneinfo-australia-nz"
+	
+	# zoneinfo-core 
+	installPackages $1 "zoneinfo-core"
+	
+	# zoneinfo-europe 
+	installPackages $1 "zoneinfo-europe"
+	
+	# zoneinfo-india 
+	installPackages $1 "zoneinfo-indian"
+	
+	# zoneinfo-america 
+	installPackages $1 "zoneinfo-america"
+	
+	# zoneinfo-pacific 
+	installPackages $1 "zoneinfo-pacific"
+	
+	# zoneinfo-poles 
+	installPackages $1 "zoneinfo-poles"
+	
+	# zoneinfo-simple 
+	installPackages $1 "zoneinfo-simple"
+}
+
+# 安装zoneinfo环境
+installZoneinfoEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 设置依赖包
+	setZoneinfoPackages $1
+}
+
+# 卸载zoneinfo环境
+unInstallZoneinfoEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME} environment!"
+	
+	# 设置依赖包
+	#setZoneinfoPackages $1
+	
+	if [ -d "${TIMEZONE_SYSTEM_PATH}" ]; then
+		rm -rf "${TIMEZONE_SYSTEM_PATH}"
+	fi
+}
+
+# 设置timezone配置
+setTimezoneConf()
+{
+	wget -q -c -t 10 -T 60 -O "${TIMEZONE_IPINFO_FILE}" --no-check-certificate "${TIMEZONE_CHECKIP_URL}"
+	
+	if [ ! -s "${TIMEZONE_IPINFO_FILE}" ]; then
+		TimeZone="Asia/Shanghai"
+	else
+		TimeZone="$(sed -E -n -e 's#.*<timezone>(.*)</timezone>#\1#p' ${TIMEZONE_IPINFO_FILE})"
+	fi
+	
+	if [ -z "${TimeZone}" ]; then
+		TimeZone="Asia/Shanghai"
+	fi
+	
+	TimeZoneFile="${ZONEINFO_SYSTEM_PATH}/${TimeZone}"
+	if [ ! -e "${TimeZoneFile}" ]; then
+		TimeZone="Asia/Shanghai"
+		TimeZoneFile="${ZONEINFO_SYSTEM_PATH}/${TimeZone}"
+	fi
+	
+	if [ -e "${TimeZoneFile}" ]; then
+		cp -fs "${TimeZoneFile}" "${TIMEZONE_SYSTEM_PATH}/localtime"	#-s:只创建符号链接而不复制文件
+	fi
+}
+
+# 设置timezone环境
+setTimezoneEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: setting the ${SERVICE_MODULE_NAME} environment!"
+	
+	if [ $1 == ${SCRIPT_INIT_FLAG} ] || [ $1 == ${SERVICE_OPEN_FLAG} ]; then
+		if [ ! -d "${TIMEZONE_SYSTEM_PATH}" ]; then
+			mkdir "${TIMEZONE_SYSTEM_PATH}"
+		fi
+		
+		if [ -e "${TIMEZONE_IPINFO_FILE}" ]; then
+			rm -rf "${TIMEZONE_IPINFO_FILE}"
+		fi
+		
+		# 设置timezone配置
+		setTimezoneConf
+		
+	elif [ $1 == ${SCRIPT_UNINIT_FLAG} ] || [ $1 == ${SERVICE_CLOSE_FLAG} ]; then
+		if [ -e "${TIMEZONE_IPINFO_FILE}" ]; then
+			rm -rf "${TIMEZONE_IPINFO_FILE}"
+		fi
+		
+		if [ -e "${TIMEZONE_SYSTEM_PATH}/localtime" ]; then
+			rm -rf "${TIMEZONE_SYSTEM_PATH}/localtime"
+		fi
+	fi
+}
+
+# 开启timezone服务
+openTimezoneService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: enable the ${SERVICE_MODULE_NAME} service!"
+	
+	RetryCount=0
+	while [ ${RetryCount} -lt 3 ]; do
+		if [ "$(nvram get ntp_ready)" != "1" ]; then
+			RetryCount=$((${RetryCount}+1))
+			continue
+		fi
+		
+		if [ ! -e "${TIMEZONE_SYSTEM_PATH}/localtime" ]; then
+			break
+		fi
+		
+		if [ ! -e "${ENTWARE_SYSTEM_PATH}/etc/localtime" ]; then
+			cp -fP "${TIMEZONE_SYSTEM_PATH}/localtime" "${ENTWARE_SYSTEM_PATH}/etc"
+		fi
+		
+		cp -fP "${TIMEZONE_SYSTEM_PATH}/localtime" "/tmp/etc"	#-P:不跟随源文件中的符号链接
+		
+		echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: enable the ${SERVICE_MODULE_NAME} service!"
+		break
+	done
+}
+
+# 关闭timezone服务
+closeTimezoneService()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: close the ${SERVICE_MODULE_NAME} service!"
+	
+	rm -rf "/etc/localtime"
+}
+
+# 初始化timezone环境
+initTimezoneEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 安装zoneinfo环境
+	installZoneinfoEnv $1
+	
+	# 设置timezone环境
+	setTimezoneEnv $1
+	
+	# 开启timezone服务
+	openTimezoneService
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"	
+}
+
+# 释放timezone环境
+uninitTimezoneEnv()
+{
+	echo -e "($(basename $0)): $$ \033[1;44;37mINFO\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+	
+	# 关闭timezone服务
+	closeTimezoneService
+	
+	# 设置timezone环境
+	setTimezoneEnv $1
+	
+	# 卸载zoneinfo环境
+	unInstallZoneinfoEnv $1
+	
+	echo -e "($(basename $0)): $$ \033[1;42;37mSUCCESS\033[0m: ${SERVICE_FUNCTION} the ${SERVICE_MODULE_NAME}!"
+}
+
+case $1 in
+	${SCRIPT_UNINIT_FLAG})
+		# 释放timezone环境
+		uninitTimezoneEnv $1
+		;;
+	${SCRIPT_INIT_FLAG})
+		# 初始化timezone环境
+		initTimezoneEnv $1
+		;;
+	${SERVICE_OPEN_FLAG})
+		# 开启timezone服务
+		openTimezoneService
+		;;
+	${SERVICE_CLOSE_FLAG})
+		# 关闭timezone服务
+		closeTimezoneService
+		;;
+	*)
+		;;
+esac
